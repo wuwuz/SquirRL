@@ -95,6 +95,16 @@ class SM_env:
     # max_hidden_block : limit the max hidden block of attacker
     # attacker_fraction : usually denoted as alpha, the hash power of the attacker against the whole network
     # follower_fraction : usually denoted as gamma, the follower's fraction against the honest miner
+    # relative_p : the coefficient of the linear trick from the Optimal Selfish Mining paper.
+    #
+    # The following params describe the random process of the alpha.
+    # If you want a fixed alpha, simply use the default values.
+    #
+    # dev : the standard deviation of the random process of alpha. If you want a fixed alpha, set dev=0.
+    # random_interval : the reasonable range of the alpha. You can use (0, 0.5).
+    # frequency: the update frequency of the alpha w.r.t block generation.
+    # random_process : "iid" or "brown".
+    # array : used for the history data simulation.
 
     def SM_theoratical_gain(self, a, gamma):
         rate = (a * (1 - a) * (1 - a) * (4.0 * a + gamma * (1 - 2 * a)) - np.power(a, 3)) / (1 - a * (1 + (2 - a) * a))
@@ -1338,6 +1348,11 @@ class SM_env_with_stale:
     # max_hidden_block : limit the max hidden block of attacker
     # attacker_fraction : usually denoted as alpha, the hash power of the attacker against the whole network
     # follower_fraction : usually denoted as gamma, the follower's fraction against the honest miner
+
+    # rule : "longest" -- bitcoin type rule; "GHOST" -- GHOST type rule
+    # stale_rate : the stale block rate s -- with prob. s the honest party will generate a stale block, which only
+    #              affects the weight of the honest chain.
+    # know_alpha : "True" -- expose the current alpha value as the last element of the state vector.
 
     def SM_theoratical_gain(self, a, gamma):
         rate = (a * (1 - a) * (1 - a) * (4.0 * a + gamma * (1 - 2 * a)) - np.power(a, 3)) / (1 - a * (1 + (2 - a) * a))

@@ -172,37 +172,38 @@ def LOAD_MODEL(path):
     input.close()
     return policy
 
+# In most of the experiments, we only tune the following params :
+num_episodes = 100 #How many episodes of game environment to train network with.
+load_model = False #Whether to load a saved model.
+load_best_model = False # load a saved best model
+ALPHA = 0.4 # the hash power fraction of attacker
+GAMMA = 0.5 # the follower's fraction
+HIDDEN_BLOCK = 20 # maximum hidden block of attacker
+rule = "longest" # "longest" -- bitcoin rule, "GHOST" -- GHOST rule
+stale_rate = 0.0 # stale block rate, 0 means no stale block -- the classical selfish mining setting
+DEV = 0.0 # the alpha's fluctuation rate, 0 means fixed alpha
+know_alpha = True # if the agent knows the current alpha.
+random_process = "iid" # or "brown" -- brownian process
 
+#Other training params.
 batch_size = 64 #How many experiences to use for each training step.
 update_freq = 4 #How often to perform a training step.
 y = .99 #Discount factor on the target Q-values
 startE = 1 #Starting chance of random action
 endE = 0.1 #Final chance of random action
 annealing_steps = 10000. #How many steps of training to reduce startE to endE.
-num_episodes = 10 #How many episodes of game environment to train network with.
 pre_train_steps = 10000 #How many steps of random actions before training begins.
 max_epLength = 10000 #The max allowed length of our episode.
-load_model = False #Whether to load a saved model.
-load_best_model = False # load a saved best model
 h_size = 100 #The size of the final convolutional layer before splitting it into Advantage and Value streams.
 tau = 0.001 #Rate to update target network toward primary network
-MDP_size_threshold = 10000
-interval = (0, 0.5)
-rept = 100
+MDP_size_threshold = 10000 # limit the MDP size that the MDP solver can finished in reasonable time
+interval = (0, 0.5) # the range of the alpha
+rept = 100 # final test repetition time
 
-ALPHA = 0.4 # the hash power fraction of attacker
-GAMMA = 0.5 # the follower's fraction
-HIDDEN_BLOCK = 20 # maximum hidden block of attacker
-rule = "longest"
-stale_rate = 0.0
-DEV = 0.0
-know_alpha = True
-random_process = "iid"
-
-path = "./with_stale_" + rule + str(HIDDEN_BLOCK) + "_" + str(h_size) #The path to save our model to.
+path = "./btc_" + rule + str(HIDDEN_BLOCK) + "_" + str(h_size) #The path to save our model to.
 if know_alpha == True: path += "know_alpha"
 best_path = path + "/model_best.ckpt" # best model path
-file = open("with_stale_" + rule + str(HIDDEN_BLOCK) + "_" + str(h_size) + ".txt", "a+")
+file = open("btc_" + rule + str(HIDDEN_BLOCK) + "_" + str(h_size) + ".txt", "a+")
 file.write("\n\n\n\n A new test from now!")
 
 env = SM_env_with_stale(max_hidden_block = HIDDEN_BLOCK, attacker_fraction = ALPHA, follower_fraction = GAMMA, rule = rule, stale_rate=stale_rate, dev = DEV, know_alpha = know_alpha, random_interval=interval, random_process = random_process, frequency=6)
