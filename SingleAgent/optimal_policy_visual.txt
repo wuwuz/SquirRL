@@ -1,0 +1,125 @@
+(0, 1, 'normal') 0.0 wait 0.01 abandon 0.5 wait 
+(0, 2, 'normal') 0.0 wait 0.01 abandon 0.54 wait 
+(0, 3, 'normal') 0.0 wait 0.01 abandon 0.56 wait 
+(0, 4, 'normal') 0.0 wait 0.01 abandon 0.5700000000000001 wait 
+(0, 5, 'normal') 0.0 wait 0.01 abandon 0.58 wait 
+(0, 6, 'normal') 0.0 wait 0.01 abandon 0.59 wait 
+(0, 7, 'normal') 0.0 wait 0.01 abandon 0.6 wait 
+(0, 8, 'normal') 0.0 wait 0.01 abandon 0.61 wait 
+(1, 2, 'normal') 0.0 wait 0.01 abandon 0.32 wait 
+(1, 3, 'normal') 0.0 wait 0.01 abandon 0.48 wait 
+(1, 4, 'normal') 0.0 wait 0.01 abandon 0.52 wait 
+(1, 5, 'normal') 0.0 wait 0.01 abandon 0.55 wait 
+(1, 6, 'normal') 0.0 wait 0.01 abandon 0.56 wait 
+(1, 7, 'normal') 0.0 wait 0.01 abandon 0.58 wait 
+(1, 8, 'normal') 0.0 wait 0.01 abandon 0.59 wait 
+(2, 3, 'normal') 0.0 wait 0.01 abandon 0.23 wait 
+(2, 4, 'normal') 0.0 wait 0.01 abandon 0.42 wait 
+(2, 5, 'normal') 0.0 wait 0.01 abandon 0.49 wait 
+(2, 6, 'normal') 0.0 wait 0.01 abandon 0.53 wait 
+(2, 7, 'normal') 0.0 wait 0.01 abandon 0.55 wait 
+(2, 8, 'normal') 0.0 wait 0.01 abandon 0.5700000000000001 wait 
+(3, 4, 'normal') 0.0 wait 0.01 abandon 0.19 wait 
+(3, 5, 'normal') 0.0 wait 0.01 abandon 0.37 wait 
+(3, 6, 'normal') 0.0 wait 0.01 abandon 0.46 wait 
+(3, 7, 'normal') 0.0 wait 0.01 abandon 0.51 wait 
+(3, 8, 'normal') 0.0 wait 0.01 abandon 0.54 wait 
+(4, 5, 'normal') 0.0 wait 0.01 abandon 0.16 wait 
+(4, 6, 'normal') 0.0 wait 0.01 abandon 0.34 wait 
+(4, 7, 'normal') 0.0 wait 0.01 abandon 0.44 wait 
+(4, 8, 'normal') 0.0 wait 0.01 abandon 0.49 wait 
+(5, 6, 'normal') 0.0 wait 0.01 abandon 0.14 wait 
+(5, 7, 'normal') 0.0 wait 0.01 abandon 0.31 wait 
+(5, 8, 'normal') 0.0 wait 0.01 abandon 0.41000000000000003 wait 
+(6, 7, 'normal') 0.0 wait 0.01 abandon 0.12 wait 
+(6, 8, 'normal') 0.0 wait 0.01 abandon 0.29 wait 
+(7, 8, 'normal') 0.0 wait 0.01 abandon 0.11 wait 
+(0, 0, 'normal') 0.0 wait 
+(1, 1, 'normal') 0.0 match 0.52 wait 
+(1, 1, 'catch up') 0.0 wait 
+(1, 1, 'forking') 0.0 wait 
+(2, 2, 'normal') 0.0 match 0.55 wait 
+(2, 2, 'catch up') 0.0 wait 
+(2, 2, 'forking') 0.0 wait 
+(3, 3, 'normal') 0.0 match 0.58 wait 
+(3, 3, 'catch up') 0.0 wait 
+(3, 3, 'forking') 0.0 wait 
+(4, 4, 'normal') 0.0 match 0.6 wait 
+(4, 4, 'catch up') 0.0 wait 
+(4, 4, 'forking') 0.0 wait 
+(5, 5, 'normal') 0.0 match 0.6 wait 
+(5, 5, 'catch up') 0.0 wait 
+(5, 5, 'forking') 0.0 wait 
+(6, 6, 'normal') 0.0 match 0.6 wait 
+(6, 6, 'catch up') 0.0 wait 
+(6, 6, 'forking') 0.0 wait 
+(7, 7, 'normal') 0.0 match 0.61 wait 
+(7, 7, 'catch up') 0.0 wait 
+(7, 7, 'forking') 0.0 wait 
+(8, 8, 'normal') 0.0 match 0.62 wait 
+(8, 8, 'catch up') 0.0 wait 
+(8, 8, 'forking') 0.0 wait 
+(1, 0, 'normal') 0.0 override 0.27 wait 0.73 override 
+(2, 0, 'normal') 0.0 override 0.02 wait 0.72 override 
+(2, 1, 'normal') 0.0 override 0.35000000000000003 match 0.43 wait 0.6900000000000001 override 
+(2, 1, 'forking') 0.0 override 0.33 wait 0.7000000000000001 override 
+(3, 0, 'normal') 0.0 override 0.03 wait 0.6900000000000001 override 
+(3, 1, 'normal') 0.0 override 0.03 wait 0.6900000000000001 override 
+(3, 1, 'forking') 0.0 override 0.02 wait 0.6900000000000001 override 
+(3, 2, 'normal') 0.0 override 0.4 match 0.48 wait 0.66 override 
+(3, 2, 'forking') 0.0 override 0.37 wait 0.68 override 
+(4, 0, 'normal') 0.0 override 0.02 wait 0.67 override 
+(4, 1, 'normal') 0.0 override 0.05 wait 0.67 override 
+(4, 1, 'forking') 0.0 override 0.04 wait 0.67 override 
+(4, 2, 'normal') 0.0 override 0.04 wait 0.67 override 
+(4, 2, 'forking') 0.0 override 0.03 wait 0.68 override 
+(4, 3, 'normal') 0.0 override 0.43 match 0.51 wait 0.63 override 
+(4, 3, 'forking') 0.0 override 0.4 wait 0.66 override 
+(5, 0, 'normal') 0.0 override 0.03 wait 0.66 override 
+(5, 1, 'normal') 0.0 override 0.05 wait 0.65 override 
+(5, 1, 'forking') 0.0 override 0.02 wait 0.66 override 
+(5, 2, 'normal') 0.0 override 0.07 wait 0.65 override 
+(5, 2, 'forking') 0.0 override 0.05 wait 0.66 override 
+(5, 3, 'normal') 0.0 override 0.05 wait 0.66 override 
+(5, 3, 'forking') 0.0 override 0.03 wait 0.67 override 
+(5, 4, 'normal') 0.0 override 0.45 match 0.53 wait 0.6 override 
+(5, 4, 'forking') 0.0 override 0.42 wait 0.65 override 
+(6, 0, 'normal') 0.0 override 0.02 wait 0.65 override 
+(6, 1, 'normal') 0.0 override 0.04 wait 0.63 override 
+(6, 1, 'forking') 0.0 override 0.03 wait 0.64 override 
+(6, 2, 'normal') 0.0 override 0.1 wait 0.63 override 
+(6, 2, 'forking') 0.0 override 0.05 wait 0.64 override 
+(6, 3, 'normal') 0.0 override 0.09 wait 0.64 override 
+(6, 3, 'forking') 0.0 override 0.06 wait 0.65 override 
+(6, 4, 'normal') 0.0 override 0.05 wait 0.64 override 
+(6, 4, 'forking') 0.0 override 0.04 wait 0.66 override 
+(6, 5, 'normal') 0.0 override 0.47000000000000003 match 0.55 wait 0.58 override 
+(6, 5, 'forking') 0.0 override 0.44 wait 0.63 override 
+(7, 0, 'normal') 0.0 override 0.03 wait 0.64 override 
+(7, 1, 'normal') 0.0 override 0.05 wait 0.62 override 
+(7, 1, 'forking') 0.0 override 0.02 wait 0.63 override 
+(7, 2, 'normal') 0.0 override 0.07 wait 0.62 override 
+(7, 2, 'forking') 0.0 override 0.04 wait 0.63 override 
+(7, 3, 'normal') 0.0 override 0.13 wait 0.62 override 
+(7, 3, 'forking') 0.0 override 0.06 wait 0.64 override 
+(7, 4, 'normal') 0.0 override 0.1 wait 0.63 override 
+(7, 4, 'forking') 0.0 override 0.07 wait 0.64 override 
+(7, 5, 'normal') 0.0 override 0.06 wait 0.48 match 0.5 wait 0.63 override 
+(7, 5, 'forking') 0.0 override 0.04 wait 0.65 override 
+(7, 6, 'normal') 0.0 override 0.49 match 0.56 override 
+(7, 6, 'forking') 0.0 override 0.45 wait 0.62 override 
+(8, 0, 'normal') 0.0 override 0.02 wait 0.62 override 
+(8, 1, 'normal') 0.0 override 0.05 wait 0.61 override 
+(8, 1, 'forking') 0.0 override 0.03 wait 0.62 override 
+(8, 2, 'normal') 0.0 override 0.06 wait 0.6 override 
+(8, 2, 'forking') 0.0 override 0.04 wait 0.62 override 
+(8, 3, 'normal') 0.0 override 0.16 wait 0.6 override 
+(8, 3, 'forking') 0.0 override 0.04 wait 0.62 override 
+(8, 4, 'normal') 0.0 override 0.15 wait 0.24 match 0.29 wait 0.61 override 
+(8, 4, 'forking') 0.0 override 0.07 wait 0.63 override 
+(8, 5, 'normal') 0.0 override 0.12 wait 0.62 override 
+(8, 5, 'forking') 0.0 override 0.08 wait 0.64 override 
+(8, 6, 'normal') 0.0 override 0.07 wait 0.47000000000000003 match 0.51 wait 0.62 override 
+(8, 6, 'forking') 0.0 override 0.05 wait 0.65 override 
+(8, 7, 'normal') 0.0 override 0.52 match 0.54 override 
+(8, 7, 'forking') 0.0 override 0.46 wait 0.61 override 
