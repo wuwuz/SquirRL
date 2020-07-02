@@ -1,0 +1,11 @@
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_000_5_3000_1_0_2020-06-19_17-26-37k81ek3uc/checkpoint_407/checkpoint-407 1 0.0
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_010_5_3000_1_0_2020-06-19_17-26-37x9wedh7u/checkpoint_407/checkpoint-407 1 0.1
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_020_5_3000_1_0_2020-06-19_17-26-43lw_p_n3f/checkpoint_407/checkpoint-407 1 0.2
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_030_5_3000_1_0_2020-06-19_17-26-37n6agcmpf/checkpoint_407/checkpoint-407 1 0.3
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_040_5_3000_1_0_2020-06-19_17-26-35phforuvh/checkpoint_407/checkpoint-407 1 0.4
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_050_5_3000_1_0_2020-06-19_17-26-42lx_dgje1/checkpoint_407/checkpoint-407 1 0.5
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_060_5_3000_1_0_2020-06-19_17-26-41202qkkyk/checkpoint_407/checkpoint-407 1 0.6
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_070_5_3000_1_0_2020-06-19_17-26-36ua4n47nq/checkpoint_407/checkpoint-407 1 0.7
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_080_5_3000_1_0_2020-06-19_17-26-425om7y93o/checkpoint_407/checkpoint-407 1 0.8
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_090_5_3000_1_0_2020-06-19_17-26-36j4t0v_ek/checkpoint_407/checkpoint-407 1 0.9
+5 0.3000 1 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/Spirit/PPO_RL3_100_5_3000_1_0_2020-06-19_17-26-41th2y2mhc/checkpoint_407/checkpoint-407 1 1.0

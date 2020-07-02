@@ -1,5 +1,5 @@
 from gym import spaces
-
+import numpy as np
 ADOPT = 0
 OVERRIDE = 1
 WAIT = 2
@@ -9,12 +9,10 @@ FORKING = 1
 CATCH_UP = 2
 
 def make_spy_space(parties, blocks):
-    state_space_list = list((spaces.Discrete(blocks + 3),
-                    spaces.Discrete(blocks + 3),
-                    spaces.Discrete(blocks + 3),
+    return spaces.Tuple((spaces.Box(low=np.array([0.]*(parties + 4)), high=np.array([blocks+3]*(parties + 3) + [np.inf]), 
+        shape=(parties + 4,)), spaces.Discrete(3)))
+def make_blind_space(parties, blocks):
+    return spaces.Tuple((spaces.Box(low = np.array([0.]*4), high=np.array([blocks + 3]*3 + [np.inf]), shape=(4,)),
                     spaces.Discrete(3)))
-    for i in range(2*parties + 1):
-        state_space_list.append(spaces.Discrete(blocks + 3))
-    return spaces.Tuple(state_space_list)
-
+                    
     

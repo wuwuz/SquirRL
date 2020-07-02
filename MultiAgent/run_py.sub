@@ -1,0 +1,11 @@
+# Unix submit description file
+# sleep.sub -- simple sleep job
+
+executable              = run_py_single.sh
+log                     = run_py_single.log
+output                  = outfile.txt
+error                   = errors.txt
+should_transfer_files   = Yes
+when_to_transfer_output = ON_EXIT
+requirements = TARGET.has_avx
+queue

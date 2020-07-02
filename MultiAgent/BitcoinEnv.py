@@ -6,12 +6,9 @@ from gym import spaces
 from ray.tune.registry import register_env
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray import tune
-from ray.rllib.agents.pg.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
-from ray.tune.util import flatten_dict
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
@@ -22,7 +19,6 @@ from ray.rllib.agents.ppo import PPOTrainer
 #from OSM import OSM
 import os
 import csv
-import pandas as pd
 import math
 import time
 import constants
@@ -49,16 +45,24 @@ class BitcoinEnv(MultiAgentEnv):
 
     def __init__(self, env_config):
         
-        self.max_states = env_config['max_hidden_block'] + 1
+        self.max_states = env_config['max_hidden_block']
 
         
         self._alphas = env_config['alphas']
         self._gammas = env_config['gammas']
         self._print_trees = env_config['print']
         self._spy = env_config['spy']
+        if 'OSM' in env_config:
+            self._osm = env_config['OSM']
+        if 'honest' in env_config:
+            self.honest = env_config['honest']
         self._team_spirit = env_config['team_spirit']
-        self.action_space = spaces.Discrete(6)
-        self.observation_space = constants.make_spy_space(len(self._alphas), self.max_states - 1)
+        self.action_space = spaces.Discrete(4)
+        blind_state_space = spaces.Tuple((spaces.Discrete(self.max_states + 3),
+                    spaces.Discrete(self.max_states + 3),
+                    spaces.Discrete(self.max_states + 3),
+                    spaces.Discrete(3)))
+        self.observation_space = blind_state_space
         self._N = len(self._alphas)
         self._honest_power = 1 - sum(self._alphas)
         self._attacker_lengths = [0 for i in range(self._N)]
@@ -74,9 +78,14 @@ class BitcoinEnv(MultiAgentEnv):
         self._honest_locations = [self._hidden_tree]
         self._accumulated_steps = 0
         self._accepted_blocks = [0 for i in range(self._N + 1)]
-        self.current_visible_state = [[0,0,0,"normal"] for i in range(self._N)]
+        self.current_visible_state = [[0,0,0,"catch up"] for i in range(self._N)]
         self._total_blocks = [0 for i in range(self._N + 1)]
         self._actions_taken = [[0,0,0,0,0] for i in range(self._N)]
+        self._rewards = [0 for i in range(self._N + 1)]
+        self._preempt = [set() for i in range(self._N)]
+        self._block_receiver = -1
+        self._no_block = 0
+        self._debug_string = ''
     def reset(self):
         self._current_alpha = self._alphas
         self._accumulated_steps = 0
@@ -84,17 +93,18 @@ class BitcoinEnv(MultiAgentEnv):
         self._hidden_tree = BlockNode(self._N) # initialize to a dummy node, makes things easier
         # everyone adopts the root
         self._hidden_tree.adopted.update(range(self._N + 1))
-
+        self._preempt = [set() for i in range(self._N)]
         # the last place each attacker adopted
         self._fork_locations = [self._hidden_tree for i in range(self._N)]
-
+        self._no_block = 0
+        self._debug_string = ''
         # the place(s) (plural to account for forking, this can be as large as N) where the honest nodes will mine from
         self._honest_locations = [self._hidden_tree]
         # 0th coordinate: length of current branch
         # 1st coordinate: length of longest branch (e.g. length of the "honest" chain)
         # 2nd coordinate: length of the current branch
         # 3rd coordinate: forking behavior wrt the "main chain"
-        self._current_visible_state = [[0,0,0, "normal"] for i in range(self._N)]
+        self._current_visible_state = [[0,0,0, "catch up"] for i in range(self._N)]
         self._accepted_blocks = [0 for i in range(self._N + 1)]
         self._total_blocks = [0 for i in range(self._N + 1)]
 
@@ -128,28 +138,28 @@ class BitcoinEnv(MultiAgentEnv):
                 return 0
         elif self._fork_locations[i].length >= self._current_visible_state[i][0]:
             if action == 1 or action == 3 or action == 5:
-                return 4
+                return 0
         elif a < b:
             if action == 1 or action == 3:
-                return 4
+                return 0
         elif a == b and a == 0:
             if action == 1 or action == 3:
-                return 4
+                return 0
         elif a == b and status == 'normal':
             if action == 1:
-                return 4
+                return 0
         elif a == b and (status == 'catch up' or status == 'forking'):
             if action == 1 or action == 3:
-                return 4
+                return 0
         elif a > b and b == 0:
             if action == 0 or action == 3:
-                return 5
+                return 1
         elif a > b and b > 0 and status == 'normal':
             if action == 0:
-                return 5
+                return 1
         elif a > b and b > 0 and (status == 'forking' or status == 'catch_up'):
             if action == 0 or action == 3:
-                return 5
+                return 1
         else:
             '''
             if action == 1:
@@ -168,15 +178,26 @@ class BitcoinEnv(MultiAgentEnv):
     
     def step(self, action_dict):
         #print("step", self._accumulated_steps)
-        event = np.random.choice(len(self._alphas) + 1, p = self._alphas + [self._honest_power])
-        self._total_blocks[event] += 1
+        # every three turns you will be assigned a block. -1 means no block
+        
+        if self._no_block == 0:
+            event = np.random.choice(len(self._alphas) + 1, p = self._alphas + [self._honest_power])
+        else:
+            event = -1
+        self._no_block = (self._no_block + 1)%(len(self._alphas) + 1)
+        #self._no_block = (self._no_block + 1)%(2)
+        if event != -1:
+            self._total_blocks[event] += 1
         overrideFlag = False
         adoptFlags = []
         adoptTeam = []
+        matchFlags = []
         next_honest_locations = set(self._honest_locations)
         if self._print_trees:
             print('Step', self._accumulated_steps)
+        self._debug_string += 'Step {0}\n'.format(self._accumulated_steps)
         printdict = {0: 'Adopt', 1: 'Override', 2: 'Wait', 3: 'Match', 4: 'Adopt Team', 5: 'Publish all'}
+        self._block_receiver = event
         for agent in action_dict.keys():
             i = int(agent)
             fork_location = self._fork_locations[i]
@@ -187,52 +208,81 @@ class BitcoinEnv(MultiAgentEnv):
             #print(str(i), action)
             self._actions_taken[i][action] += 1
             if self._print_trees:
-                print('Agent ' + agent + ' action', printdict[action])
+                print('Agent ' + agent + ' action', printdict[action], 'mapped from {}'.format(printdict[action_dict[agent]]))
+            self._debug_string += 'Agent {0} action {1} mapped from {2}\n'.format(agent, printdict[action], printdict[action_dict[agent]])
             if action == 0:
                 adoptFlags.append(agent)
+                self._preempt[i] = set()
             elif action == 1:
                 honest_location = self._honest_locations[np.random.randint(len(self._honest_locations), size = 1)[0]]
                 self._fork_locations[i] = self.block_update(honest_location, fork_location, i, 1)
-                if not overrideFlag:
-                    next_honest_locations = set()
-                    next_honest_locations.add(self._fork_locations[i])
-                    overrideFlag = True
-                else:
-                    next_honest_locations.add(self._fork_locations[i])
+                for j in range(self._honest_locations[0].length, self._honest_locations[0].length + 2):
+                    if j in self._preempt[i]:
+                        self._preempt[i].remove(j)
+                next_honest_locations.add(self._fork_locations[i])
             elif action == 2:
                 continue
             elif action == 3:
                 honest_location = self._honest_locations[np.random.randint(len(self._honest_locations), size = 1)[0]]
                 self._fork_locations[i] = self.block_update(honest_location, fork_location, i, 0)
-                if not overrideFlag:
-                    next_honest_locations.add(self._fork_locations[i])
+                next_honest_locations.add(self._fork_locations[i])
+                matchFlags.append(i)
             elif action == 4:
                 adoptTeam.append(agent)
+                self._preempt[i] = set()
             elif action == 5:
                 leng = self._current_visible_state[i][0] - self._fork_locations[i].length
                 self._fork_locations[i] = self.block_update(fork_location, fork_location, i, leng)
                 next_honest_locations.add(self._fork_locations[i])
+                for j in range(self._fork_locations[i].length, self._current_visible_state[i][0] + 1):
+                    if j in self._preempt[i]:
+                        self._preempt[i].remove(j)
         
         max_length = 0
         for loc in next_honest_locations:
             if loc.length > max_length:
                 max_length = loc.length
-        self._honest_locations = []
-        for loc in next_honest_locations:
-            if loc.length == max_length:
+        # if we've got someone with longer chain
+        if self._honest_locations[0].length != max_length:
+            self._honest_locations = []
+            for loc in next_honest_locations:
+                if loc.length == max_length:
+                    self._honest_locations.append(loc)
+        # if chain length has stayed the same. Then matchers get to be in the honest locations
+        else:
+            next_honest_locations = set()
+            for loc in self._honest_locations:
+                next_honest_locations.add(loc)
+            for agent in matchFlags:
+                next_honest_locations.add(self._fork_locations[agent])
+            self._honest_locations = []
+            for loc in next_honest_locations:
                 self._honest_locations.append(loc)
+            
         
 
         for agent in adoptFlags:
             i = int(agent)
-            chosen_random = np.random.randint(len(self._honest_locations), size = 1)[0]
+            if i == self._N - 1 and self._gammas[0] > 0:
+                leaders = []
+                for j, loc in enumerate(self._honest_locations):
+                    if loc.owner != self._N - 1:
+                        leaders.append(j)
+                if len(leaders) == 0:
+                    leaders.append(0)
+                chosen_random = np.random.choice(leaders, p = [1./len(leaders)]*len(leaders))
+                if self._print_trees:
+                    print("Honest locations", [x.owner for x in self._honest_locations])
+                    print("Probabilities", [1./len(leaders)]*len(leaders))
+                    print("Chosen", self._honest_locations[chosen_random].owner)
+            else:
+                chosen_random = np.random.randint(len(self._honest_locations), size = 1)[0]
             self.abandon(self._fork_locations[i], i)
             self._fork_locations[i] = self._honest_locations[chosen_random]
             self.adopt(self._fork_locations[i], i)
             self._current_visible_state[i][0] = self._honest_locations[0].length
-            self._current_visible_state[i][3] = "catch up"
         
-        fork_locations_lengths = [self._fork_locations[i].length for i in range(self._N)]
+        fork_locations_lengths = [self._fork_locations[i].length for i in range(self._N - 1)]
         forkmax = np.argmax(fork_locations_lengths)
         for agent in adoptTeam:
             i = int(agent)
@@ -240,7 +290,6 @@ class BitcoinEnv(MultiAgentEnv):
             self._fork_locations[i] = self._fork_locations[forkmax]
             self.adopt(self._fork_locations[i], i)
             self._current_visible_state[i][0] = self._fork_locations[i].length
-            self._current_visible_state[i][3] = "catch up"
         # prune the tree for rewards
         rewards = [0 for i in range(self._N + 1)]
         if len(self._honest_locations) == 1:
@@ -262,19 +311,21 @@ class BitcoinEnv(MultiAgentEnv):
                 root_length = root_candidates[root_idx].length
                 for i in range(len(self._attacker_lengths)):
                     self._current_visible_state[i][0] -= root_length
+                # update the preempt lengths 
+                new_preempt = [set() for i in range(self._N)]
+                old_preempt = [x.copy() for x in self._preempt]
+                for i in range(self._N):
+                    for preempt_len in old_preempt[i]:
+                        new_preempt_len = preempt_len - root_length
+                        if new_preempt_len > 0:
+                            new_preempt[i].add(new_preempt_len)
+                self._preempt = new_preempt
+
                 new_owns = [0 for i in range(self._N + 1)]
                 self.prune_update(root_candidates[root_idx], root_length, new_owns)
                 self._hidden_tree = root_candidates[root_idx]
         honest_set = set(self._honest_locations)
-        # handle the block distribution here as well as fork status changes
-        # fork status is permanent until game is or the player adopts
-        if len(honest_set) > 1: 
-            for i in range(self._N):
-                if self._fork_locations[i] in honest_set and self._fork_locations[i].owner == i:
-                    self._current_visible_state[i][3] = "forking"
-        else:
-            for i in range(self._N):
-                self._current_visible_state[i][3] = "normal"
+
         # if one of the honest nodes get it
         if event == self._N:
             leaders = []
@@ -309,6 +360,7 @@ class BitcoinEnv(MultiAgentEnv):
                 honest_fraction = 1 - sum(follower_fractions)
                 marginal_increase = honest_fraction/len(leaders)
                 follower_fractions = [x + marginal_increase for x in follower_fractions]
+            
             chosen_fork = np.random.choice(leaders, p = follower_fractions)
             curr_mine_location = id_to_fork_reference[chosen_fork]
 
@@ -326,14 +378,11 @@ class BitcoinEnv(MultiAgentEnv):
             curr_mine_location.children.append(newNode)
             # this is now the new longest chain
             self._honest_locations = [newNode]
-
-
-            for i in range(self._N):
-                if self._current_visible_state[i][3] != "forking":
-                    self._current_visible_state[i][3] = "normal"
-        # if someone else mines the block, then it just goes on their private fork
-        else:
+        elif event != -1:
             self._current_visible_state[event][0] += 1
+            if self._current_visible_state[event][0] > self._honest_locations[0].length:
+                preempted_len = self._current_visible_state[event][0]
+                self._preempt[event].add(preempted_len)
             # no match allowed if someone else mined the last block
         # update the visible states
         for i in range(self._N):
@@ -341,37 +390,48 @@ class BitcoinEnv(MultiAgentEnv):
             other_owns = other_owns - self._fork_locations[i].owns[i]
             self._current_visible_state[i][1] = self._honest_locations[0].length 
             self._current_visible_state[i][2] = self._current_visible_state[i][0] - other_owns
-        if event != self._N:
-            for i in range(self._N):
-                if i == event:
-                    if self._current_visible_state[event][0] == self._honest_locations[0].length:
-                        self._current_visible_state[event][3] = "catch up"
-                    elif self._current_visible_state[event][3] != "forking":
-                        self._current_visible_state[event][3] = "normal"
-                    # if it is not a fork, it leads into 'normal'
-                else:
-                    # normal leads to normal, fork leads to fork, catch up is the one we need logic for
-                    if self._current_visible_state[event][3] == "catch up":
-                        if self._current_visible_state[event][0] != self._current_visible_state[event][1]:
-                            self._current_visible_state[event][3] = "normal"
+        
+        
+        for i in range(self._N):
+            if self._honest_locations[0].length in self._preempt[i]:
+                self._current_visible_state[i][3] = "normal"
+                # there is only one chance to match
+                self._preempt[i].remove(self._honest_locations[0].length)
+            else:
+                self._current_visible_state[i][3] = "catch up"
+        if len(self._honest_locations) > 1:
+            for loc in self._honest_locations:
+                if loc.owner != None and loc.owner != self._N:
+                    self._current_visible_state[loc.owner][3] = "forking"
+        if self._print_trees:
+            print("Preempt lengths", self._preempt)        
+        self._debug_string += 'Preempt lengths {0}\n'.format(self._preempt)
+
         transformed_rewards = [0. for i in range(self._N)]
         self._accepted_blocks = np.asarray(self._accepted_blocks) + np.asarray(rewards)
         self._accumulated_steps += 1
         
-        total_selfish_alpha = np.sum(self._alphas)
-        total_selfish_transf_rew = (1 - total_selfish_alpha)*np.sum(rewards[:-1]) - total_selfish_alpha*rewards[-1]
-
+        total_selfish_alpha = np.sum(self._alphas[:-1])
+        total_selfish_transf_rew = (1 - total_selfish_alpha)*np.sum(rewards[:-2]) - total_selfish_alpha*rewards[-2]
+        
+        transformed_rewards_team = [0. for i in range(self._N)]
         for i in range(self._N):
-            positive_reward = (1 - self._alphas[i])*rewards[i]
-            negative_reward = -self._alphas[i]*(np.sum(rewards) - rewards[i])
+            curr_reward = (1 - self._team_spirit)*rewards[i] + self._team_spirit*(np.sum(np.array(rewards[:-2]))/(self._N - 1))
+            positive_reward = (1 - self._alphas[i])*curr_reward
+            negative_reward = -self._alphas[i]*(np.sum(rewards) - curr_reward)
             final_reward = positive_reward + negative_reward
             transformed_rewards[i] = final_reward
+
+            #transformed_rewards_team[i] = (1 - self._alphas[i])*(np.sum(rewards[:-2])/(self._N - 1)) - self._alphas[i]*(np.sum(rewards) - np.sum(rewards[:-2])/(self._N - 1))
         done = {
-            "__all__": self._accumulated_steps >= self._episode_length
+            "__all__": sum(self._total_blocks) >= self._episode_length
         }
         rew = dict()
         for i in range(len(transformed_rewards)):
-            rew[str(i)] = transformed_rewards[i]*(1 - self._team_spirit) + self._team_spirit*total_selfish_transf_rew
+            rew[str(i)] = transformed_rewards[i]
+        for i in range(self._N):
+            if self._osm[i] == 1 or self.honest[i] == 1:
+                rew[str(i)] = 0
         info = dict()
         for i in range(len(transformed_rewards)):
             curr_dict = dict()
@@ -383,14 +443,23 @@ class BitcoinEnv(MultiAgentEnv):
                 curr_dict[str(k)] = self._actions_taken[i][k]/self._accumulated_steps
             info[str(i)] = curr_dict 
         obs = self.obsDict()
+        self._rewards = rewards
+        tree = self.convert_tree(self._hidden_tree)
         if self._print_trees:
             print('Rewards', rewards)
             print('Block receiver', event)
             print("Obs", obs)
-            tree = self.convert_tree(self._hidden_tree)
+            
             print('\n')
             print(drawTree2(False)(False)(tree))
             print('\n')
+        self._debug_string += 'Rewards {0}\n'.format(rewards)
+        self._debug_string += 'Block receiver {0}\n'.format(event)
+        self._debug_string += 'Obs {0}\n'.format(obs)
+        self._debug_string += '\n'
+        self._debug_string += drawTree2(False)(False)(tree)
+        self._debug_string += '\n'
+        self._debug_string += '\n'
         return obs, rew, done, info
     # update the publicly available tree when overriding
     # honest node is the current longest node
@@ -417,25 +486,40 @@ class BitcoinEnv(MultiAgentEnv):
 
     def obsDict(self):
         returnedDict = dict()
-        private_chains = [self._fork_locations[i].length for i in range(len(self._alphas))]
+        private_chains = [self._current_visible_state[i][0] for i in range(len(self._alphas))]
+        fork_locations_lengths = [self._fork_locations[i].length for i in range(self._N - 1)]
+        forkmax = np.argmax(fork_locations_lengths)
+        
         for i in range(len(self._current_visible_state)):
-            if self._spy[i] == 1:
-                additional_info = private_chains
+            if self._spy[i] == 1 and self._osm[i] == 0:
+                additional_info = private_chains[:i].copy() + private_chains[i+1:].copy()
+                additional_info += [self._accumulated_steps]
+                #additional_info += [self._no_block]
+                additional_info += [sum([self._honest_locations[j].owns[i] for j in range(len(self._honest_locations))])/len(self._honest_locations)]
+                additional_info += [self._fork_locations[forkmax].owns[i]]
                 if self._current_visible_state[i][3] == 'normal':
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.NORMAL] + additional_info + self._fork_locations[i].owns.copy())
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.NORMAL] + additional_info)
                 elif self._current_visible_state[i][3] == 'forking':
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.FORKING] + additional_info + self._fork_locations[i].owns.copy())
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.FORKING] + additional_info)
                 else:
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.CATCH_UP] + additional_info + self._fork_locations[i].owns.copy())
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.CATCH_UP] + additional_info)
+                if self._osm[i]:
+                    res_obs = np.array(res_obs)
+                returnedDict[str(i)] = res_obs
             else:
                 additional_info = []
+                additional_info += [self._accumulated_steps]
+                #additional_info += [self._no_block]
+                additional_info += [sum([self._honest_locations[j].owns[i] for j in range(len(self._honest_locations))])/len(self._honest_locations)]
                 if self._current_visible_state[i][3] == 'normal':
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.NORMAL] + additional_info)
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.NORMAL] + additional_info)
                 elif self._current_visible_state[i][3] == 'forking':
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.FORKING] + additional_info)
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.FORKING] + additional_info)
                 else:
-                    returnedDict[str(i)] = tuple(self._current_visible_state[i][:3] + [constants.CATCH_UP] + additional_info)
-            
+                    res_obs = tuple(self._current_visible_state[i][:3] + [constants.CATCH_UP] + additional_info)
+                if self._osm[i]:
+                    res_obs = np.array(res_obs)
+                returnedDict[str(i)] = res_obs
         return returnedDict
     # update the lengths post-pruning
     # update the nodes that are owned up to this point

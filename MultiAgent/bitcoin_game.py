@@ -6,12 +6,13 @@ from gym import spaces
 from ray.tune.registry import register_env
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray import tune
-from ray.rllib.agents.pg.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.dqn import DQNTrainer
+#from ray.rllib.agents.pg.pg import PGTrainer
+#from ray.rllib.agents.pg.pg_policy import PGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
-from ray.tune.util import flatten_dict
+#from ray.tune.util import flatten_dict
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
@@ -22,14 +23,16 @@ from ray.rllib.agents.ppo import PPOTrainer
 #from OSM import OSM
 import os
 import csv
-import pandas as pd
 import math
 import time
 import constants
 import mdptoolbox
-
 from OSM import OSM
 from BitcoinEnv import BitcoinEnv
+from ray.rllib.models import ModelCatalog
+from ParametricActionsModel import ParametricActionsModel
+from ParametricBitcoin import ParametricBitcoin
+
 os.environ['https_proxy'] = ' '
 
 
@@ -107,7 +110,10 @@ class OSM_strategy(Policy):
         if smaller_state in self.osm._state_dict:
             return self.optimal_policy[self.osm._name_to_index(smaller_state)]
         else:
-            return 2
+            if curr_s[0] > curr_s[1]:
+                return 1
+            else:
+                return 0
     def compute_actions(self,
                         obs_batch,
                         state_batches,
@@ -117,8 +123,12 @@ class OSM_strategy(Policy):
                         episodes=None,
                         **kwargs):
         actions = []
-        for i in range(len(obs_batch)):
-            actions.append(self.OSM_act(obs_batch[i]))
+        for obs in obs_batch:
+            a = int(round(obs[0]))
+            h = int(round(obs[1]))
+            o = int(round(obs[2]))
+            f = int(round(obs[3]))
+            actions.append(self.OSM_act([a,h,o,f]))
         return actions, [], {}
 
     def learn_on_batch(self, samples):
@@ -129,315 +139,405 @@ class OSM_strategy(Policy):
 
     def set_weights(self, weights):
         pass
-# Train an RL agent against an OSM agent.  0 agent is OSM, 1 agent is RL
-def run_OSM(args):
+class Honest(Policy):
+    def __init__(self, observation_space, action_space, config):
+        Policy.__init__(self, observation_space, action_space, config)
+        self.blocks = config['blocks']
+        self.fiftyone = config['fiftyone']
+        self.extended = config['extended']
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
+        actions = []
+        for obs in obs_batch:
+            a = int(round(obs[0]))
+            h = int(round(obs[1]))
+            o = int(round(obs[2]))
+            f = int(round(obs[3]))
+            if self.extended:
+                if a > h:
+                    actions.append(5)
+                else:
+                    actions.append(0)
+            elif a >= self.blocks or h >= self.blocks:
+                if a > h:
+                    actions.append(1)
+                else:
+                    actions.append(0)
+            elif self.fiftyone:
+                listobs = list(obs)
+                maxlen = max(listobs[4:-1])
+                if a > maxlen:
+                    actions.append(5)
+                else:
+                    actions.append(4)
+            else:
+                if a > h:
+                    actions.append(1)
+                else:
+                    actions.append(0)
+        return actions, [], {}
+
+    def learn_on_batch(self, samples):
+        pass
+
+    def get_weights(self):
+        pass
+
+    def set_weights(self, weights):
+        pass
+def run_saved(args):
+    if args.OSM[0] == 1 and args.OSM[1] == 0:
+        setting = "RLvsOSM"
+    elif args.OSM[0] == 1 and args.OSM[1] == 1:
+        setting = "OSMvsOSM"
+    else:
+        setting = "RL{0}".format(len(args.alphas) - sum(args.honest))
+    if args.save_path == 'none':
+        checkpointnum = 0
+    else:
+        checkpointnum = args.save_path.split('-')[-1]
+    env_name = "{setting}_{spirit}_{blocks}_{alpha:04d}_{spy}_{checkpointnum}".format(spirit = int(args.team_spirit*100), 
+                blocks = int(args.blocks), 
+                alpha = int(args.alphas[0]*10000), 
+                spy = args.spy[1],
+                setting = setting,
+                checkpointnum = checkpointnum)
+    ray.init(local_mode=True, memory=700 * 1024 * 1024, object_store_memory=100 * 1024 * 1024, driver_object_store_memory=100 * 1024 * 102)
+    print("Testing {0}".format(setting), env_name)
     def select_policy(agent_id):
         return agent_id
-    mine_act_space = spaces.Discrete(6)
-
+    ModelCatalog.register_custom_model(
+        "pa_model", ParametricActionsModel)
+    register_env(env_name, lambda config: ParametricBitcoin(config))
+    
+    if args.extended:
+        action_n = 6
+    else:
+        action_n = 4
     # define the state space, one for parties that have access to spy info and one without
     spy_state_space = constants.make_spy_space(len(args.alphas), args.blocks)
-    blind_state_space = spaces.Tuple((spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(3)))
+    blind_state_space = constants.make_blind_space(len(args.alphas), args.blocks)
     policies = dict()
-    policies['0'] = (OSM_strategy, blind_state_space, mine_act_space, {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks})
-    if args.spy[1] == 1:
-        policies['1'] = (None, spy_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-                    }
-                })
-    else:
-        policies['1'] = (None, blind_state_space, mine_act_space, {
+    osm_space = spaces.Box(low=np.zeros(4), 
+                high=np.array([args.blocks + 4, args.blocks + 4, args.blocks + 4, 3.]))
+    if sum(args.OSM) > 0:
+        osm = OSM_strategy(osm_space,spaces.Discrete(4), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks})
+    
+    blind_dim = 0
+    for space in blind_state_space:
+        blind_dim +=  get_preprocessor(space)(space).size 
+        
+    spy_dim = 0
+    for space in spy_state_space:
+        spy_dim += get_preprocessor(space)(space).size
+    
+    spy_state_space_wrapped = spaces.Dict(
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+            "bitcoin": spaces.Box(0,np.inf,shape=(spy_dim,))
+        } 
+    )
+    blind_state_space_wrapped = spaces.Dict(
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,))
+        } 
+    )
+    preps = [None for i in range(len(args.alphas))]
+    for i in range(len(args.alphas)):
+        if args.spy[i] == 1:
+            policies[str(i)] = (None, spy_state_space_wrapped, spaces.Discrete(action_n), {
                         "model": {
-                            "use_lstm":args.use_lstm
+                            "use_lstm":args.use_lstm,
+                            "custom_model": "pa_model",
+                            "custom_options": {
+                                "parties": len(args.alphas),
+                                "spy": True,
+                                "blocks": args.blocks,
+                                "extended": args.extended
+                            }
                         }
                     })
-    register_env(
-        "bitcoin_vs_OSM",
-        lambda config: BitcoinEnv(config)
-    )
+            preps[i] = get_preprocessor(spy_state_space_wrapped)(spy_state_space_wrapped)
+        elif args.OSM[i] == 1:
+            policies[str(i)] = (OSM_strategy, osm_space, spaces.Discrete(4), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks})
+        elif args.honest[i] == 1:
+            policies[str(i)] = (Honest, osm_space, spaces.Discrete(6), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks, 'fiftyone': args.fiftyone[i], 'extended': args.extended})
+        else:
+            policies[str(i)] = (None, blind_state_space_wrapped, spaces.Discrete(action_n), {
+                            "model": {
+                                "use_lstm":args.use_lstm,
+                                "custom_model": "pa_model",
+                                "custom_options": {
+                                "parties": len(args.alphas),
+                                "spy": False,
+                                "blocks": args.blocks,
+                                "extended": args.extended
+                            }
+                        }
+                    })
+            preps[i] = get_preprocessor(blind_state_space_wrapped)(blind_state_space_wrapped)
     env_config = {'max_hidden_block': args.blocks,
             'alphas': args.alphas,
             'gammas': args.gammas,
             'ep_length': args.ep_length,
-            'print': False,
+            'print': args.debug,
             'spy': args.spy,
-            'team_spirit': args.team_spirit
+            'team_spirit': args.team_spirit,
+            'OSM': args.OSM,
+            'extended': args.extended,
+            'honest': args.honest
         }
-    tune.run(
-        args.trainer,
-        #loggers = [CustomLogger], 
-        stop={"episodes_total": args.episodes},
-        config={
-            "env": "bitcoin_vs_OSM",
+    policies_to_train = [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1]
+    env = ParametricBitcoin(env_config=env_config)
+    if len(policies_to_train) != 0:
+        if args.trainer == 'PPO':
+            trainer = PPOTrainer(env=BitcoinEnv, config={
+                        "num_workers": 0,
+                        "multiagent": {
+                            "policies_to_train": policies_to_train,
+                            "policies": policies,
+                            "policy_mapping_fn": select_policy,
+                        },
+                        "env_config": env_config
+                    })
+        else:
+            trainer = DQNTrainer(env=env_name, config={
+                        "eager": True,
+                        "multiagent": {
+                            "policies_to_train": policies_to_train,
+                            "policies": policies,
+                            "policy_mapping_fn": select_policy,
+                        },
+                        "env_config": env_config
+                    })
+            model = trainer.get_policy().model
+            print(model.base_model.summary())
+        print("Restoring model")
+        trainer.restore(args.save_path) 
+    loaded_policies = dict()
+    for k in range(len(args.alphas)):
+        if args.OSM[k] == 1:
+            loaded_policies[str(k)] = osm
+        elif args.honest[k] == 1:
+            honest = Honest(osm_space, spaces.Discrete(6), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks, 'fiftyone': args.fiftyone[k], 'extended': args.extended}, )
+            loaded_policies[str(k)] = honest
+            preps[k] = None
+        else:
+            loaded_policies[str(k)] = trainer.get_policy(str(k))
+    trials = 100000
+    reslist = []
+    for j in range(3):
+        blocks = np.zeros(len(args.alphas) + 1)
+        event_blocks = np.zeros(len(args.alphas) + 1)
+        action_dist = {str(i): np.zeros(action_n) for i in range(len(args.alphas))}
+        res = dict()
+        for i in range(trials):
+            obs = env.reset()
+            isDone = False
+            RNNstates = {str(i): [] for i in range(len(args.alphas))}
+            while not isDone:
+                action_dict = dict()
+                for k in range(len(policies)):
+                    prep = preps[k]
+                    if not prep:
+                        action_dict[str(k)], _, _ = loaded_policies[str(k)].compute_single_action(obs=obs[str(k)], state = [])
+                    else:   
+                        action_dict[str(k)], _, _ = loaded_policies[str(k)].compute_single_action(obs=prep.transform(obs[str(k)]), state = [])
+                    action_dist[str(k)][action_dict[str(k)]] += 1
+                obs, _, done, _ = env.step(action_dict)
+                isDone = done['__all__']
+            if i == 0 and j == 0:
+                with open(os.path.join('/afs/ece/usr/charlieh/eval_results', env_name + '_trace.txt'), 'w+') as f:
+                    f.write(env.wrapped._debug_string)
+            blocks += env.wrapped._accepted_blocks
+            event_blocks += env.wrapped._total_blocks
+            total_event_blocks = np.sum(event_blocks)
+            if i % 100 == 0:
+                print("Relative rewards", blocks/np.sum(blocks))
+                print("Relative received", event_blocks/total_event_blocks)
+                for i in range(len(args.alphas)):
+                    print("Action dist", str(i), action_dist[str(i)]/np.sum(action_dist[str(i)]))
+        res['blocks'] = blocks
+        res['action dist'] = action_dist
+        res['blocks norm'] = blocks/np.sum(blocks)
+        res['actions norm'] = {str(i):action_dist[str(i)]/np.sum(action_dist[str(i)]) for i in range(len(args.alphas))}
+        reslist.append(res)
+    np.save(os.path.join('/afs/ece/usr/charlieh/eval_results', env_name), reslist, allow_pickle=True)
+
+def run_RL(args):
+    if args.OSM[0] == 1:
+        env_name = "RLvsOSM_{spirit:03d}_{blocks}_{alpha:04d}_{spy}".format(spirit = int(args.team_spirit*100), 
+                blocks = int(args.blocks), 
+                alpha = int(args.alphas[0]*10000), 
+                spy = args.spy[1],
+                players = len(args.alphas))
+    else:
+        env_name = "RL{players}_{spirit:03d}_{blocks}_{alpha:04d}_{spy}".format(spirit = int(args.team_spirit*100), 
+                    blocks = int(args.blocks), 
+                    alpha = int(args.alphas[0]*10000), 
+                    spy = args.spy[0],
+                    players = len(args.alphas) - sum(args.honest))
+    ray.init(temp_dir=os.path.join('/tmp/', env_name) + time.strftime("%Y%m%d-%H%M%S"))
+    def select_policy(agent_id):
+        return agent_id
+    mine_act_space = spaces.Discrete(6)
+    ModelCatalog.register_custom_model(
+        "pa_model", ParametricActionsModel)
+    register_env(env_name, lambda config: ParametricBitcoin(config))
+    if args.trainer == "DQN":
+        cfg = {
+            # TODO(ekl) we need to set these to prevent the masked values
+            # from being further processed in DistributionalQModel, which
+            # would mess up the masking. It is possible to support these if we
+            # defined a a custom DistributionalQModel that is aware of masking.
+            "hiddens": [],
+            "dueling": False,
+            "target_network_update_freq": 100*1000,
+            "train_batch_size": 2**14,
+            "buffer_size": 100000,
+            "lr_schedule": [[0, 5e-4], [args.episodes*100/2, 1e-6]],
+            "n_step": 10,
+            "double_q": True,
+        }
+    elif args.trainer == "A2C":
+        cfg = {
+            "microbatch_size": 2**11,
+            "train_batch_size": 2**11,
+            "lr":3e-4,
+            "rollout_fragment_length": 200,
+        }
+    else:
+        cfg = {
+            #"use_critic": False,
+            #"use_gae": False,
+            "train_batch_size": 2**19,
+            "sgd_minibatch_size": 2**19,
+            "num_sgd_iter":1,
+            #"kl_coeff": 10e-14,
+            #"clip_param": 1000,
+            #"train_batch_size": 2**11,
+            #"sgd_minibatch_size": 2**11,
+            "num_sgd_iter":1,
+            #"entropy_coeff": .5,
+            "rollout_fragment_length": (99*(len(args.alphas) + 1) + 1),
+            "entropy_coeff_schedule": [[0,0.5],[args.episodes*100*(len(args.alphas) + 1)/8,0.01], [args.episodes*100*(len(args.alphas) + 1)/2,0]],
+            "lr_schedule": [[0, 5e-3], [args.episodes*100*(len(args.alphas) + 1)/2, 5e-6]],
+            #"lr": 5e-3
+        }
+    if args.extended:
+        action_n = 6
+    else:
+        action_n = 4
+    # define the state space, one for parties that have access to spy info and one without
+    spy_state_space = constants.make_spy_space(len(args.alphas), args.blocks)
+    blind_state_space = constants.make_blind_space(len(args.alphas), args.blocks)
+    policies = dict()
+    osm_space = spaces.Box(low=np.zeros(4), 
+                high=np.array([args.blocks + 4, args.blocks + 4, args.blocks + 4, 3.]))
+    blind_dim = 0
+    for space in blind_state_space:
+        blind_dim +=  get_preprocessor(space)(space).size 
+        
+    spy_dim = 0
+    for space in spy_state_space:
+        spy_dim += get_preprocessor(space)(space).size
+    
+    spy_state_space_wrapped = spaces.Dict(
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+            "bitcoin": spaces.Box(0,np.inf,shape=(spy_dim,))
+        } 
+    )
+    blind_state_space_wrapped = spaces.Dict(
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,))
+        } 
+    )
+    for i in range(len(args.alphas)):
+        if args.spy[i] == 1 and args.OSM[i] == 0:
+            policies[str(i)] = (None, spy_state_space_wrapped, spaces.Discrete(action_n), {
+                        "model": {
+                            "use_lstm":args.use_lstm,
+                            "custom_model": "pa_model",
+                            "custom_options": {
+                                "parties": len(args.alphas),
+                                "spy": True,
+                                "blocks": args.blocks,
+                                "extended": args.extended
+                            }
+                        }
+                    })
+        elif args.OSM[i] == 1:
+            policies[str(i)] = (OSM_strategy, osm_space, spaces.Discrete(4), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks})
+        elif args.honest[i] == 1:
+            policies[str(i)] = (Honest, osm_space, spaces.Discrete(6), {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks, 'fiftyone': args.fiftyone[i], 'extended': args.extended})
+        else:
+            policies[str(i)] = (None, blind_state_space_wrapped, spaces.Discrete(action_n), {
+                            "model": {
+                                "use_lstm":args.use_lstm,
+                                "max_seq_len": 15*(len(args.alphas) + 1),
+                                "custom_model": "pa_model",
+                                "custom_options": {
+                                "parties": len(args.alphas),
+                                "spy": False,
+                                "blocks": args.blocks,
+                                "extended": args.extended
+                            }
+                        }
+                    })
+    print(args)
+    env_config = {'max_hidden_block': args.blocks,
+            'alphas': args.alphas,
+            'gammas': args.gammas,
+            'ep_length': args.ep_length,
+            'print': args.debug,
+            'spy': args.spy,
+            'team_spirit': args.team_spirit,
+            'OSM': args.OSM,
+            'extended': args.extended,
+            'honest': args.honest
+        }
+    config=dict({
+            "env": env_name,
             #"vf_share_layers": True,
             "gamma": 0.99,
             "num_workers": args.workers,
-            "num_envs_per_worker": 1,
             "batch_mode": "complete_episodes",
-            "train_batch_size": args.workers*args.ep_length,
-            "entropy_coeff": .5,
-            "entropy_coeff_schedule": args.ep_length*args.episodes,
             "multiagent": {
-                "policies_to_train": ["1"],
+                "policies_to_train": [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1],
                 "policies": policies,
                 "policy_mapping_fn": select_policy,
             },
+            "log_level": 'ERROR',
             "env_config": env_config,
+            "num_gpus": 1,
             "callbacks": {
                 "on_episode_start": on_episode_start,
                 "on_episode_step": on_episode_step,
                 "on_episode_end": on_episode_end
             }
-        },
+        
+        }, **cfg)
+
+    tune.run(
+        args.trainer,
+        stop={"episodes_total": args.episodes},
+        checkpoint_score_attr='episode_reward_mean',
+        config=config,
+        local_dir = "/afs/ece/usr/charlieh/ray_results",
+        checkpoint_freq=100,
         keep_checkpoints_num=1,
-        checkpoint_freq=3) 
-def run_saved_OSM(args):
-    ray.init()
-    # define the action space
-    mine_act_space = spaces.Discrete(6)
-
-    # define the state space, one for parties that have access to spy info and one without
-    spy_state_space = constants.make_spy_space(len(args.alphas), args.blocks)
-    blind_state_space = spaces.Tuple((spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(3)))
-    print("Testing OSM", args.alphas)
-    def select_policy(agent_id):
-        return agent_id
-    policies_to_train = ["1"]
-    policies = dict()
-    policies['0'] = (OSM_strategy, blind_state_space, mine_act_space, {'alpha': args.alphas[0], 'gamma': args.gammas[0], 'blocks': args.blocks})
-    if args.spy[1] == 1:
-        policies['1'] = (None, spy_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-                    }
-                })
-    else:
-        policies['1'] = (None, blind_state_space, mine_act_space, {
-                        "model": {
-                            "use_lstm":args.use_lstm
-                        }
-                    })
-    env_config={"max_hidden_block":args.blocks,
-        "alphas":args.alphas,
-        "gammas":args.alphas,
-        'ep_length':args.ep_length,
-        'print': args.debug,
-        'spy': args.spy,
-        'team_spirit': args.team_spirit}
-    trainer = PPOTrainer(env=BitcoinEnv, config={
-                "num_workers": 0,
-                "multiagent": {
-                    "policies_to_train": policies_to_train,
-                    "policies": policies,
-                    "policy_mapping_fn": select_policy,
-                },
-                "env_config": env_config
-            })
-    env = BitcoinEnv(env_config=env_config)
-    trainer.restore(args.save_path)
-    prep = get_preprocessor(blind_state_space)(blind_state_space)
-    loaded_policies = dict()
-    for k in range(len(args.alphas)):
-        loaded_policies[str(k)] = trainer.get_policy(str(k))
-    trials = 10000
-    rel_rewards = []
-    OSM_rewards = []
-    for i in range(trials):
-        obs = env.reset()
-        isDone = False
-        while not isDone:
-            action_dict = dict()
-            for k in range(len(policies)):
-                action_dict[str(k)], _, _ = loaded_policies[str(k)].compute_single_action(obs=prep.transform(obs[str(k)]), state = [])
-            obs, _, done, _ = env.step(action_dict)
-            isDone = done['__all__']
-        selfish = env._accepted_blocks[1]
-        OSM = env._accepted_blocks[0]
-        total_blocks = np.sum(env._accepted_blocks)
-        rel_rewards.append(float(selfish)/total_blocks)
-        OSM_rewards.append(float(OSM)/total_blocks)
-        if i % 100 == 0:
-            print("RL:", np.mean(rel_rewards), "OSM:", np.mean(OSM_rewards))
-    print(str(j) + '\t' + str(np.mean(OSM_rewards)) + '\t' + str(np.mean(rel_rewards)), file=open('output.txt', "a"))
-# run saved strategies from an RL^k game
-def run_saved(args):
-    ray.init()
-    # define the action space
-    mine_act_space = spaces.Discrete(6)
-
-    # define the state space, one for parties that have access to spy info and one without
-    spy_state_space = constants.make_spy_space(len(args.alphas), args.blocks)
-    blind_state_space = spaces.Tuple((spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(3)))
-    print("Testing alpha", args.alphas)
-    def select_policy(agent_id):
-        return agent_id
-    policies_to_train = [str(i) for i in range(len(args.alphas))]
-    policies = dict()
-    for i in range(len(args.alphas)):
-        if args.spy[i] == 1:
-            policies[str(i)] = (None, spy_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-
-                    }
-                })
-        else:
-            policies[str(i)] = (None, blind_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-                    }
-                })
-    env_config={"max_hidden_block":args.blocks,
-        "alphas":args.alphas,
-        "gammas":args.alphas,
-        'ep_length':args.ep_length,
-        'print': args.debug,
-        'spy': args.spy,
-        'team_spirit': args.team_spirit}
-    trainer = PPOTrainer(env=BitcoinEnv, config={
-                "num_workers": 0,
-                "multiagent": {
-                    "policies_to_train": policies_to_train,
-                    "policies": policies,
-                    "policy_mapping_fn": select_policy,
-                },
-                "env_config": env_config
-            })
-    env = BitcoinEnv(env_config=env_config)
-    trainer.restore(args.save_path)
-    prep = get_preprocessor(spy_state_space)(spy_state_space)
-    loaded_policies = dict()
-    for k in range(len(args.alphas)):
-        loaded_policies[str(k)] = trainer.get_policy(str(k))
-    trials = 10000
-    rel_rewards = []
-    for i in range(trials):
-        obs = env.reset()
-        isDone = False
-        while not isDone:
-            action_dict = dict()
-            for k in range(len(policies)):
-                action_dict[str(k)], _, _ = loaded_policies[str(k)].compute_single_action(obs=prep.transform(obs[str(k)]), state = [])
-            obs, _, done, _ = env.step(action_dict)
-            isDone = done['__all__']
-        selfish = np.sum(env._accepted_blocks[:-1])
-        total_blocks = np.sum(env._accepted_blocks)
-        rel_rewards.append(float(selfish)/total_blocks)
-        if i % 100 == 0:
-            print("Current mean:", np.mean(rel_rewards))
-    print(str(j) + '\t' + str(np.mean(rel_rewards)), file=open('output.txt', "a"))
-def run_RL(args):
-    def select_policy(agent_id):
-        return agent_id
-    policies_to_train = [str(i) for i in range(len(args.alphas))]
-    
-    policies = dict()
-
-    # define the action space
-    mine_act_space = spaces.Discrete(6)
-
-    # define the state space, one for parties that have access to spy info and one without
-    spy_state_space = constants.make_spy_space(len(args.alphas), args.blocks)
-    blind_state_space = spaces.Tuple((spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(args.blocks + 3),
-                    spaces.Discrete(3)))
-
-    for i in range(len(args.alphas)):
-        if args.spy[i] == 1:
-            policies[str(i)] = (None, spy_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-
-                    }
-                })
-        else:
-            policies[str(i)] = (None, blind_state_space, mine_act_space, {
-                    "model": {
-                        "use_lstm":args.use_lstm
-                    }
-                })
-    register_env(
-        "bitcoin_team" + str(args.team_spirit * 10),
-        lambda config: BitcoinEnv(config)
-    )
-    if args.debug:
-        env_config = {'max_hidden_block': args.blocks,
-            'alphas': args.alphas,
-            'gammas': args.gammas,
-            'ep_length': args.ep_length,
-            'print': True,
-            'spy': args.spy,
-            'team_spirit': args.team_spirit
-        } 
-        tune.run(
-            args.trainer,
-            stop={"episodes_total": args.episodes},
-            config={
-                "env": "bitcoin_team" + str(args.team_spirit * 10),
-                #"vf_share_layers": True,
-                "gamma": 0.99,
-                "num_workers": args.workers,
-                "num_envs_per_worker": 1,
-                "batch_mode": "complete_episodes",
-                "train_batch_size": args.workers*args.ep_length,
-                "entropy_coeff": .5,
-                "entropy_coeff_schedule": args.ep_length*args.episodes,
-                "multiagent": {
-                    "policies_to_train": policies_to_train,
-                    "policies": policies,
-                    "policy_mapping_fn": select_policy,
-                },
-                "env_config": env_config,
-            })
-    else:
-        env_config = {'max_hidden_block': args.blocks,
-            'alphas': args.alphas,
-            'gammas': args.gammas,
-            'ep_length': args.ep_length,
-            'print': False,
-            'spy': args.spy,
-            'team_spirit': args.team_spirit
-        }
-        tune.run(
-            args.trainer,
-            #loggers = [CustomLogger], 
-            stop={"episodes_total": args.episodes},
-            config={
-                "env": "bitcoin_team" + str(args.team_spirit * 10),
-                #"vf_share_layers": True,
-                "gamma": 0.99,
-                "num_workers": args.workers,
-                "num_envs_per_worker": 1,
-                "batch_mode": "complete_episodes",
-                "train_batch_size": args.workers*args.ep_length,
-                "entropy_coeff": .5,
-                "entropy_coeff_schedule": args.ep_length*args.episodes,
-                "multiagent": {
-                    "policies_to_train": policies_to_train,
-                    "policies": policies,
-                    "policy_mapping_fn": select_policy,
-                },
-                "env_config": env_config,
-                "callbacks": {
-                    "on_episode_start": on_episode_start,
-                    "on_episode_step": on_episode_step,
-                    "on_episode_end": on_episode_end
-                }
-            },
-            checkpoint_score_attr="episode_reward_mean",
-            keep_checkpoints_num=1,
-            checkpoint_freq=3)    
+        checkpoint_at_end=True
+    ) 
+   
 def main():
     CLI = argparse.ArgumentParser()
     # hash power of each player
@@ -448,33 +548,67 @@ def main():
     CLI.add_argument('--blocks', type = int, default = 5)
     # which algo to use
     CLI.add_argument('--trainer', type = str, default = 'PPO')
-    CLI.add_argument('--episodes', type = int, default = 100000)
+    CLI.add_argument('--episodes', type = int, default = 2*2*532500)
+    #CLI.add_argument('--episodes', type = int, default = 20000)
     CLI.add_argument('--ep_length', type = int, default = 100)
     # give particular players the ability to see the hidden states of other players
-    CLI.add_argument('--spy', nargs='*', type=int, default = [1, 1])
+    CLI.add_argument('--spy', nargs='*', type=int, default = [0, 0])
     # do the OSM experiment; currently only supported for RL vs OSM, can be expanded if need be
-    CLI.add_argument('--OSM', type = bool, default = False)
+    CLI.add_argument('--OSM', type = int, default = 0)
     CLI.add_argument('--workers', type = int, default = 7)
+    CLI.add_argument('--players', type = int, default = 0)
     # how much to value the team (1 is fully support team, 0 is lone wolf.)
-    CLI.add_argument('--team_spirit', type = float,default = 1.)
+    CLI.add_argument('--team_spirit', type = float,default = 0.)
     # print the blockchain graphs at each step to see what's going on
     CLI.add_argument('--debug', type = bool, default = False)
     # input the global path of the checkpoint you want to run an evaluation on
     CLI.add_argument('--save_path', type = str, default = '')
-    CLI.add_argument('--use_lstm', type = str, default = False)
-    args = CLI.parse_args()   
+    CLI.add_argument('--use_lstm', type = str, default = True)
+    CLI.add_argument('--extended', type=int, default = 0)
+    CLI.add_argument('--honest', type=int, default = [0,1])
+    args = CLI.parse_args()  
+    '''
+    args.alphas = [args.alphas[0]]*1
+    args.gammas = [args.gammas[0]]*1
+    args.spy = [args.spy[0]]*1
+    args.OSM = [1]
+    run_OSM_vs_OSM(args) 
+    '''
+    '''
+    args.alphas = [.3,.3,.3,.1]
+    args.gammas = [0,0,0,0]
+    args.honest = [1,1,1,1]
+    args.fiftyone = [1,1,1,0]
+    args.OSM = [0,0,0,0]
+    args.spy = [1,1,1,0]
+    args.extended = 1
+    run_saved(args)
+    '''
     
-    if args.OSM:
-        args.spy = [0 for i in range(len(args.alphas))]
-        if len(args.save_path) > 0:
-            run_saved_OSM(args)
-        else:
-            run_OSM(args)
+    if args.players > 0:
+        alpha = args.alphas[0]
+        spy = args.spy[0]
+        args.alphas = [alpha]*args.players
+        args.gammas = [1./args.players]*args.players
+        args.spy = [spy]*args.players
+        args.honest = [0]*args.players
+        args.OSM = [1]*args.OSM + [0]*(args.players - args.OSM)
+        
+        
+        args.alphas = args.alphas + [1 - alpha*args.players]
+        args.gammas = args.gammas + [0]
+        args.spy = args.spy + [0]
+        args.honest = args.honest + [1]
+        args.OSM = args.OSM + [0]
+        args.fiftyone = [0]*(args.players + 1)
+        
+    if args.save_path != "none":
+        args.workers = 0
+        run_saved(args)
     else:
-        if len(args.save_path) > 0:
-            run_saved(args)
-        else:
-            run_RL(args)
-
+        run_RL(args)
+    
+    
+    
 if __name__ == "__main__":
     main()

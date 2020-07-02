@@ -1,0 +1,3 @@
+5 0.3000 0 1 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RL1_0_5_3000_0_0_2020-06-13_00-10-24kky993si/checkpoint_813/checkpoint-813 0 0
+5 0.4950 0 2 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RL2_0_5_4950_0_0_2020-06-13_00-10-23uy31y9p_/checkpoint_748/checkpoint-748 0 0
+5 0.1342 0 3 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RL3_0_5_1342_0_0_2020-06-13_00-10-23ye9yi29t/checkpoint_564/checkpoint-564 0 0
