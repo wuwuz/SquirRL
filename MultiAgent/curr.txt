@@ -1,0 +1,4 @@
+5 0.0419 0 4 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/RL4_v2/PPO_RL4_000_5_0419_0_0_2020-07-28_15-09-317ega5ukj/checkpoint_262/checkpoint-262 0 0
+5 0.0712 0 4 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/RL4_v2/PPO_RL4_000_5_0712_0_0_2020-07-28_15-09-28cp9nw3q_/checkpoint_219/checkpoint-219 0 0
+5 0.1006 0 4 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/RL4_v2/PPO_RL4_000_5_1006_0_0_2020-07-28_15-09-27w7nysh6b/checkpoint_255/checkpoint-255 0 0
+5 0.1300 0 4 0 /afs/ece.cmu.edu/usr/charlieh/ray_results/RL4_v2/PPO_RL4_000_5_1300_0_0_2020-07-29_13-27-27jhfjmuyf/checkpoint_259/checkpoint-259 0 0

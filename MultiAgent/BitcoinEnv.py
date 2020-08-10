@@ -15,7 +15,9 @@ from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              EXPR_RESULT_FILE)
 from functools import reduce
 from itertools import (chain, takewhile)
-from ray.rllib.agents.ppo import PPOTrainer             
+from ray.rllib.agents.ppo import PPOTrainer    
+from constants import OSM_strategy
+from constants import Honest         
 #from OSM import OSM
 import os
 import csv
@@ -52,10 +54,19 @@ class BitcoinEnv(MultiAgentEnv):
         self._gammas = env_config['gammas']
         self._print_trees = env_config['print']
         self._spy = env_config['spy']
+        self._wait_bias = False
+        self._initial_OSM = False
+        self._anneal_delay = False
         if 'OSM' in env_config:
             self._osm = env_config['OSM']
         if 'honest' in env_config:
             self.honest = env_config['honest']
+        if 'wait_bias' in env_config:
+            self._wait_bias = env_config['wait_bias']
+        if 'initial_OSM' in env_config:
+            self._initial_OSM = env_config['initial_OSM']
+        if 'anneal_delay' in env_config:
+            self._anneal_delay = env_config['anneal_delay']
         self._team_spirit = env_config['team_spirit']
         self.action_space = spaces.Discrete(4)
         blind_state_space = spaces.Tuple((spaces.Discrete(self.max_states + 3),
@@ -86,6 +97,13 @@ class BitcoinEnv(MultiAgentEnv):
         self._block_receiver = -1
         self._no_block = 0
         self._debug_string = ''
+        osm_space = spaces.Box(low=np.zeros(4), 
+                high=np.array([self.max_states + 4, self.max_states + 4, self.max_states + 4, 3.]))
+        self._osm_strat = OSM_strategy(osm_space,spaces.Discrete(4), {'alpha': self._alphas[0], 'gamma': self._gammas[0], 'blocks': self.max_states, 'extended': True})
+        self._honest_strat = Honest(osm_space, spaces.Discrete(6), {'alpha': self._alphas[0], 'gamma': self._gammas[0], 'blocks': self.max_states, 'fiftyone': False, 'extended': True}, )
+        self._initialized = False
+        self._episodes_total = 0
+        self._learner_stats = None
     def reset(self):
         self._current_alpha = self._alphas
         self._accumulated_steps = 0
@@ -98,6 +116,8 @@ class BitcoinEnv(MultiAgentEnv):
         self._fork_locations = [self._hidden_tree for i in range(self._N)]
         self._no_block = 0
         self._debug_string = ''
+        
+        
         # the place(s) (plural to account for forking, this can be as large as N) where the honest nodes will mine from
         self._honest_locations = [self._hidden_tree]
         # 0th coordinate: length of current branch
@@ -107,11 +127,26 @@ class BitcoinEnv(MultiAgentEnv):
         self._current_visible_state = [[0,0,0, "catch up"] for i in range(self._N)]
         self._accepted_blocks = [0 for i in range(self._N + 1)]
         self._total_blocks = [0 for i in range(self._N + 1)]
-
+        self._initialized = False
         obs = self.obsDict()
-        returnedDict = obs
+        block_events = np.random.randint(15)
+        if self._initial_OSM:
+            while sum(self._total_blocks) < block_events:
+                action_dict = dict()
+                for k in range(len(self._alphas)):         
+                    if self.honest[k]:
+                        action_dict[str(k)], _, _ = self._honest_strat.compute_single_action(obs=obs[str(k)], state = [])
+                    else:
+                        action_dict[str(k)], _, _ = self._osm_strat.compute_single_action(obs=obs[str(k)], state = [])
+                obs, _, _, _ = self.step(action_dict)
+        self._accepted_blocks = [0 for i in range(self._N + 1)]
+        self._total_blocks = [0 for i in range(self._N + 1)]
+        self._no_block = 0
+        self._accumulated_steps = 0
+        self._actions_taken = [[0,0,0,0,0,0] for i in range(self._N)]
+        self._initialized = True
 
-        return returnedDict
+        return obs
     def convert_tree(self, root):
         children = []
         for child in root.children:
@@ -129,7 +164,9 @@ class BitcoinEnv(MultiAgentEnv):
         else:
             return 4
         return action
-    
+    def set_phase(self, episodes_total, learner_stats):
+        self._episodes_total = episodes_total
+        self._learner_stats = learner_stats
     def map_action(self, a, b, status, action, i):
         if a >= self.max_states or b >= self.max_states:
             if a > b:
@@ -184,7 +221,10 @@ class BitcoinEnv(MultiAgentEnv):
             event = np.random.choice(len(self._alphas) + 1, p = self._alphas + [self._honest_power])
         else:
             event = -1
-        self._no_block = (self._no_block + 1)%(len(self._alphas) + 1)
+        if self._anneal_delay:
+            self._no_block = (self._no_block + 1)%min(int(self._episodes_total/5e5) + 1, 4)
+        else:
+            self._no_block = (self._no_block + 1)%4
         #self._no_block = (self._no_block + 1)%(2)
         if event != -1:
             self._total_blocks[event] += 1
@@ -416,8 +456,12 @@ class BitcoinEnv(MultiAgentEnv):
         
         transformed_rewards_team = [0. for i in range(self._N)]
         for i in range(self._N):
+            if action_dict[str(i)] == 2 and self._wait_bias and self._episodes_total > 5e5 and self._episodes_total < 1600000:
+                wait_indicator = 1
+            else:
+                wait_indicator = 0
             curr_reward = (1 - self._team_spirit)*rewards[i] + self._team_spirit*(np.sum(np.array(rewards[:-2]))/(self._N - 1))
-            positive_reward = (1 - self._alphas[i])*curr_reward
+            positive_reward = (1 - self._alphas[i])*curr_reward + wait_indicator * 0.1*max(2e6 - self._episodes_total, 0)/2e6
             negative_reward = -self._alphas[i]*(np.sum(rewards) - curr_reward)
             final_reward = positive_reward + negative_reward
             transformed_rewards[i] = final_reward
@@ -493,8 +537,8 @@ class BitcoinEnv(MultiAgentEnv):
         for i in range(len(self._current_visible_state)):
             if self._spy[i] == 1 and self._osm[i] == 0:
                 additional_info = private_chains[:i].copy() + private_chains[i+1:].copy()
-                additional_info += [self._accumulated_steps]
-                #additional_info += [self._no_block]
+                #additional_info += [self._accumulated_steps]
+                additional_info += [self._no_block]
                 additional_info += [sum([self._honest_locations[j].owns[i] for j in range(len(self._honest_locations))])/len(self._honest_locations)]
                 additional_info += [self._fork_locations[forkmax].owns[i]]
                 if self._current_visible_state[i][3] == 'normal':
@@ -508,8 +552,8 @@ class BitcoinEnv(MultiAgentEnv):
                 returnedDict[str(i)] = res_obs
             else:
                 additional_info = []
-                additional_info += [self._accumulated_steps]
-                #additional_info += [self._no_block]
+                #additional_info += [self._accumulated_steps]
+                additional_info += [self._no_block]
                 additional_info += [sum([self._honest_locations[j].owns[i] for j in range(len(self._honest_locations))])/len(self._honest_locations)]
                 if self._current_visible_state[i][3] == 'normal':
                     res_obs = tuple(self._current_visible_state[i][:3] + [constants.NORMAL] + additional_info)

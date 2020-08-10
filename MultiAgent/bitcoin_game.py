@@ -1,4 +1,6 @@
 import random
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 import argparse
 import ray
@@ -21,7 +23,6 @@ from functools import reduce
 from itertools import (chain, takewhile)
 from ray.rllib.agents.ppo import PPOTrainer             
 #from OSM import OSM
-import os
 import csv
 import math
 import time
@@ -82,6 +83,16 @@ def on_episode_end(info):
         total += relative_reward
         i += 1
     episode.custom_metrics["total_relative_reward"] = total
+
+def on_train_result(info):
+    result = info["result"]
+    episodes_total = result['episodes_total']
+    learner_stats = result['info']['learner']
+    trainer = info["trainer"]
+    trainer.workers.foreach_worker(
+        lambda ev: ev.foreach_env(
+            lambda env: env.wrapped.set_phase(episodes_total, learner_stats)))
+
 class OSM_strategy(Policy):
     def __init__(self, observation_space, action_space, config):
         Policy.__init__(self, observation_space, action_space, config)
@@ -292,7 +303,7 @@ def run_saved(args):
             'team_spirit': args.team_spirit,
             'OSM': args.OSM,
             'extended': args.extended,
-            'honest': args.honest
+            'honest': args.honest,
         }
     policies_to_train = [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1]
     env = ParametricBitcoin(env_config=env_config)
@@ -372,7 +383,13 @@ def run_saved(args):
     np.save(os.path.join('/afs/ece/usr/charlieh/eval_results', env_name), reslist, allow_pickle=True)
 
 def run_RL(args):
-    if args.OSM[0] == 1:
+    if args.save_path == 'osmvsosm':
+        env_name = "OSMvsOSM_{spirit:03d}_{blocks}_{alpha:04d}_{spy}".format(spirit = int(args.team_spirit*100), 
+                blocks = int(args.blocks), 
+                alpha = int(args.alphas[0]*10000), 
+                spy = args.spy[1],
+                players = len(args.alphas))
+    elif args.OSM[0] == 1:
         env_name = "RLvsOSM_{spirit:03d}_{blocks}_{alpha:04d}_{spy}".format(spirit = int(args.team_spirit*100), 
                 blocks = int(args.blocks), 
                 alpha = int(args.alphas[0]*10000), 
@@ -414,23 +431,40 @@ def run_RL(args):
             "rollout_fragment_length": 200,
         }
     else:
-        cfg = {
-            #"use_critic": False,
-            #"use_gae": False,
-            "train_batch_size": 2**19,
-            "sgd_minibatch_size": 2**19,
-            "num_sgd_iter":1,
-            #"kl_coeff": 10e-14,
-            #"clip_param": 1000,
-            #"train_batch_size": 2**11,
-            #"sgd_minibatch_size": 2**11,
-            "num_sgd_iter":1,
-            #"entropy_coeff": .5,
-            "rollout_fragment_length": (99*(len(args.alphas) + 1) + 1),
-            "entropy_coeff_schedule": [[0,0.5],[args.episodes*100*(len(args.alphas) + 1)/8,0.01], [args.episodes*100*(len(args.alphas) + 1)/2,0]],
-            "lr_schedule": [[0, 5e-3], [args.episodes*100*(len(args.alphas) + 1)/2, 5e-6]],
-            #"lr": 5e-3
-        }
+        if args.save_path == 'none':
+            cfg = {
+                #"use_critic": False,
+                #"use_gae": False,
+                "train_batch_size": 2**20,
+                "sgd_minibatch_size": 2**14,
+                "num_sgd_iter":2**6,
+                #"kl_coeff": 10e-14,
+                #"clip_param": 1000,
+                #"train_batch_size": 2**18,
+                #"sgd_minibatch_size": 2**18,
+                #"entropy_coeff": .005,
+                "rollout_fragment_length": (99*(3 + 1) + 1),
+                "entropy_coeff_schedule": [[0,0.01],[args.episodes*100*4/2,0]],
+                #"lr_schedule": [[0, 5e-3], [args.episodes*100*(len(args.alphas) + 1)/2, 5e-6]],
+                "lr": 5e-4
+            }
+        else:
+            cfg = {
+                #"use_critic": False,
+                #"use_gae": False,
+                "train_batch_size": 397e3,
+                "sgd_minibatch_size": 1,
+                "num_sgd_iter":1,
+                #"kl_coeff": 10e-14,
+                #"clip_param": 1000,
+                #"train_batch_size": 2**18,
+                #"sgd_minibatch_size": 2**18,
+                #"entropy_coeff": .005,
+                #"rollout_fragment_length": (99*(3 + 1) + 1),
+                #"entropy_coeff_schedule": [[0,0.01],[args.episodes*100*4/2,0]],
+                #"lr_schedule": [[0, 5e-3], [args.episodes*100*(len(args.alphas) + 1)/2, 5e-6]],
+                "lr": 1e-7
+            }
     if args.extended:
         action_n = 6
     else:
@@ -483,7 +517,7 @@ def run_RL(args):
             policies[str(i)] = (None, blind_state_space_wrapped, spaces.Discrete(action_n), {
                             "model": {
                                 "use_lstm":args.use_lstm,
-                                "max_seq_len": 15*(len(args.alphas) + 1),
+                                #"max_seq_len": 15*(len(args.alphas) + 1),
                                 "custom_model": "pa_model",
                                 "custom_options": {
                                 "parties": len(args.alphas),
@@ -494,49 +528,133 @@ def run_RL(args):
                         }
                     })
     print(args)
-    env_config = {'max_hidden_block': args.blocks,
-            'alphas': args.alphas,
-            'gammas': args.gammas,
-            'ep_length': args.ep_length,
-            'print': args.debug,
-            'spy': args.spy,
-            'team_spirit': args.team_spirit,
-            'OSM': args.OSM,
-            'extended': args.extended,
-            'honest': args.honest
-        }
-    config=dict({
-            "env": env_name,
-            #"vf_share_layers": True,
-            "gamma": 0.99,
-            "num_workers": args.workers,
-            "batch_mode": "complete_episodes",
-            "multiagent": {
-                "policies_to_train": [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1],
-                "policies": policies,
-                "policy_mapping_fn": select_policy,
-            },
-            "log_level": 'ERROR',
-            "env_config": env_config,
-            "num_gpus": 1,
-            "callbacks": {
-                "on_episode_start": on_episode_start,
-                "on_episode_step": on_episode_step,
-                "on_episode_end": on_episode_end
+    print(policies)
+    if args.save_path == 'none':
+        env_config = {'max_hidden_block': args.blocks,
+                'alphas': args.alphas,
+                'gammas': args.gammas,
+                'ep_length': args.ep_length,
+                'print': args.debug,
+                'spy': args.spy,
+                'team_spirit': args.team_spirit,
+                'OSM': args.OSM,
+                'extended': args.extended,
+                'honest': args.honest,
+                'initial_OSM': True,
+                'wait_bias': True,
+                'anneal_delay': True
             }
-        
-        }, **cfg)
-
-    tune.run(
-        args.trainer,
-        stop={"episodes_total": args.episodes},
-        checkpoint_score_attr='episode_reward_mean',
-        config=config,
-        local_dir = "/afs/ece/usr/charlieh/ray_results",
-        checkpoint_freq=100,
-        keep_checkpoints_num=1,
-        checkpoint_at_end=True
-    ) 
+    else:
+        env_config = {'max_hidden_block': args.blocks,
+                'alphas': args.alphas,
+                'gammas': args.gammas,
+                'ep_length': args.ep_length,
+                'print': args.debug,
+                'spy': args.spy,
+                'team_spirit': args.team_spirit,
+                'OSM': args.OSM,
+                'extended': args.extended,
+                'honest': args.honest,
+            }
+    if args.save_path == 'none':
+        config=dict({
+                "env": env_name,
+                #"vf_share_layers": True,
+                "gamma": 0.997,
+                "num_workers": args.workers,
+                "batch_mode": "complete_episodes",
+                "multiagent": {
+                    "policies_to_train": [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1],
+                    "policies": policies,
+                    "policy_mapping_fn": select_policy,
+                },
+                "log_level": 'ERROR',
+                "env_config": env_config,
+                "num_gpus": 0,
+                "callbacks": {
+                    "on_episode_start": on_episode_start,
+                    "on_episode_step": on_episode_step,
+                    "on_episode_end": on_episode_end,
+                    "on_train_result": on_train_result
+                }
+            
+            }, **cfg)
+    else:
+        config=dict({
+                "env": env_name,
+                #"vf_share_layers": True,
+                "gamma": 0.997,
+                "num_workers": args.workers,
+                "batch_mode": "complete_episodes",
+                "multiagent": {
+                    "policies_to_train": [str(i) for i in range(len(args.alphas)) if args.OSM[i] != 1 and args.honest[i] != 1],
+                    "policies": policies,
+                    "policy_mapping_fn": select_policy,
+                },
+                "log_level": 'ERROR',
+                "env_config": env_config,
+                "num_gpus": 0,
+                "callbacks": {
+                    "on_episode_start": on_episode_start,
+                    "on_episode_step": on_episode_step,
+                    "on_episode_end": on_episode_end,
+                    "on_train_result": on_train_result
+                }
+            
+            }, **cfg)
+    if args.save_path != 'none':
+        if args.save_path == 'osmvsosm':
+            tune.run(
+                args.trainer,
+                name='eval_v3',
+                stop={"iterations_since_restore": 300},
+                #restore=args.save_path,
+                checkpoint_score_attr='episode_reward_mean',
+                config=config,
+                local_dir = "/afs/ece/usr/charlieh/ray_results",
+                #checkpoint_freq=20,
+                #keep_checkpoints_num=1,
+                checkpoint_at_end=True
+            ) 
+        else:
+            tune.run(
+                args.trainer,
+                name='eval_v3',
+                stop={"iterations_since_restore": 300},
+                restore=args.save_path,
+                checkpoint_score_attr='episode_reward_mean',
+                config=config,
+                local_dir = "/afs/ece/usr/charlieh/ray_results",
+                #checkpoint_freq=20,
+                #keep_checkpoints_num=1,
+                checkpoint_at_end=True
+            ) 
+    else:
+        if hasattr(args, 'cont_path'):
+            tune.run(
+                args.trainer,
+                name='RL4_v3',
+                stop={"episodes_total": args.episodes},
+                restore=args.cont_path,
+                checkpoint_score_attr='episode_reward_mean',
+                config=config,
+                local_dir = "/afs/ece/usr/charlieh/ray_results",
+                checkpoint_freq=1,
+                #keep_checkpoints_num=1,
+                checkpoint_at_end=True
+            ) 
+        else:
+            tune.run(
+                args.trainer,
+                name='RL5',
+                stop={"episodes_total": args.episodes},
+                checkpoint_score_attr='episode_reward_mean',
+                config=config,
+                local_dir = "/afs/ece/usr/charlieh/ray_results",
+                checkpoint_freq=1,
+                #keep_checkpoints_num=1,
+                checkpoint_at_end=True
+            ) 
    
 def main():
     CLI = argparse.ArgumentParser()
@@ -555,7 +673,7 @@ def main():
     CLI.add_argument('--spy', nargs='*', type=int, default = [0, 0])
     # do the OSM experiment; currently only supported for RL vs OSM, can be expanded if need be
     CLI.add_argument('--OSM', type = int, default = 0)
-    CLI.add_argument('--workers', type = int, default = 7)
+    CLI.add_argument('--workers', type = int, default = min(len(os.sched_getaffinity(0)) - 1, 15))
     CLI.add_argument('--players', type = int, default = 0)
     # how much to value the team (1 is fully support team, 0 is lone wolf.)
     CLI.add_argument('--team_spirit', type = float,default = 0.)
@@ -563,7 +681,7 @@ def main():
     CLI.add_argument('--debug', type = bool, default = False)
     # input the global path of the checkpoint you want to run an evaluation on
     CLI.add_argument('--save_path', type = str, default = '')
-    CLI.add_argument('--use_lstm', type = str, default = True)
+    CLI.add_argument('--use_lstm', type = str, default = False)
     CLI.add_argument('--extended', type=int, default = 0)
     CLI.add_argument('--honest', type=int, default = [0,1])
     args = CLI.parse_args()  
@@ -601,13 +719,12 @@ def main():
         args.honest = args.honest + [1]
         args.OSM = args.OSM + [0]
         args.fiftyone = [0]*(args.players + 1)
-        
-    if args.save_path != "none":
-        args.workers = 0
-        run_saved(args)
-    else:
-        run_RL(args)
-    
+    if sum(args.OSM) == 2:
+        args.alphas[2] = 0
+        args.alphas[3] = 1 - sum(args.alphas[:2])
+    args.cont_path = args.save_path
+    args.save_path = 'none'
+    run_RL(args)
     
     
 if __name__ == "__main__":

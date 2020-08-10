@@ -1,9 +1,0 @@
-5 0.0500 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_0500_0_0_2020-06-10_19-02-17vjdutfi0/checkpoint_204/checkpoint-204 0 0
-5 0.1000 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_1000_0_0_2020-06-10_19-02-163hp3fx5r/checkpoint_204/checkpoint-204 0 0
-5 0.1500 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_1500_0_0_2020-06-10_19-02-17_r9qi910/checkpoint_204/checkpoint-204 0 0
-5 0.2000 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_2000_0_0_2020-06-10_19-02-17cs3x7lel/checkpoint_204/checkpoint-204 0 0
-5 0.2500 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_2500_0_0_2020-06-10_19-02-17s77otuss/checkpoint_204/checkpoint-204 0 0
-5 0.3000 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_3000_0_0_2020-06-10_19-02-16dstvgb80/checkpoint_204/checkpoint-204 0 0
-5 0.3500 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_3500_0_0_2020-06-10_19-02-15dq3aws_8/checkpoint_204/checkpoint-204 0 0
-5 0.4000 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_4000_0_0_2020-06-10_19-02-17qe7940q1/checkpoint_204/checkpoint-204 0 0
-5 0.4500 0 2 1 /afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv/PPO_RLvsOSM_0_5_4500_0_0_2020-06-10_19-02-176q84icu4/checkpoint_204/checkpoint-204 0 0

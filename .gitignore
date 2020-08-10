@@ -9,7 +9,7 @@
 *.pyc
 multiparty_20_100/*
 multiparty_20_100.txt
-
+OSM_logs
 # caches
 __pycache__
 *.ckpt.*

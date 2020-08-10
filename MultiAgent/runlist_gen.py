@@ -70,10 +70,10 @@ with open('RL3_args.txt', 'w+') as f:
         ))
 '''
 
-with open('all_train_spy.txt', 'w+') as f:
-    spy = 1
-    extended = 1
-    '''
+with open('RL5.txt', 'w+') as f:
+    spy = 0
+    extended = 0
+    
     for players in range(1,2):
         for i in np.linspace(.05, .5, 9):
             f.write("{blocks} {alphas:.04f} {spy} {players} {osm} {savepath} {extended} {teamspirit}\n".format(
@@ -86,8 +86,8 @@ with open('all_train_spy.txt', 'w+') as f:
                 extended = extended,
                 teamspirit = 0
             ))
-    '''
-    for players in range(2,4):
+    
+    for players in range(2,6):
         for i in np.linspace(.05, .99, 9):
             f.write("{blocks} {alphas:.04f} {spy} {players} {osm} {savepath} {extended} {teamspirit}\n".format(
                 blocks = 5,
@@ -113,14 +113,14 @@ with open('train_spirit.txt', 'w+') as f:
                 extended = 1,
                 teamspirit = i
             ))
+'''
 
-
-
+'''
 setting_sets = ["RLvsOSM", "RL2", "RL3", "RL4"]
 setting_sets = ["RLvsOSM"]
-setting_sets = ["RL1", "RL2", "RL3", "RL4"]
-runfile = 'all_eval.txt'  
-root = '/afs/ece.cmu.edu/usr/charlieh/ray_results/PPO/OutsideEnv'
+setting_sets = ["RL3"]
+runfile = 'RL3_cont.txt'  
+root = '/afs/ece.cmu.edu/usr/charlieh/ray_results/RLX_v2'
 players = {"RL1":1,"RLvsOSM": 2, "RL2":2, "RL3":3, "RL4":4}
 osm = {"RLvsOSM": 1, "RL2":0, "RL3":0, "RL4":0, "RL1": 0}
 with open(runfile, 'w+') as f:
