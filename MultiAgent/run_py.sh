@@ -6,5 +6,5 @@
 export HOME=/tmp/charlieh
 
 # run your script
-/afs/ece/usr/charlieh/env/bin/python /afs/ece/usr/charlieh/SquirRL/MultiAgent/bitcoin_game.py --blocks $1 --alphas $2 --spy $3 --players $4 --OSM $5 --save_path $6 --extended $7 --team_spirit $8
+/afs/ece/usr/charlieh/venv/bin/python /afs/ece/usr/charlieh/SquirRL/MultiAgent/bilinear.py --het1 $1 --het2 $2 --eta $3 --etac $4 --tau $5
 

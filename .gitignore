@@ -37,3 +37,16 @@ __pycache__
 *.exe
 *.out
 *.app
+*.log
+*.err
+process*
+gcs_server*
+python-core*
+raylet*
+*.sub
+bilinear*
+plot*
+best*
+runlist_*
+fedgan*
+*.sh

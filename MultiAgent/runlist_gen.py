@@ -69,7 +69,7 @@ with open('RL3_args.txt', 'w+') as f:
             "none"
         ))
 '''
-
+'''
 with open('RL5.txt', 'w+') as f:
     spy = 0
     extended = 0
@@ -99,7 +99,14 @@ with open('RL5.txt', 'w+') as f:
                 extended = extended,
                 teamspirit = 0
             ))
-
+'''
+with open('fedgan_input.txt', 'w+') as f:
+    for i in range(21):
+        f.write("{het} {het} {eta} {eta} {tau}\n".format(het = i, eta = 0.1, tau = 1))
+    for i in range(21):
+        f.write("{het} {het} {eta} {eta} {tau}\n".format(het = i, eta = 0.01, tau = 1))
+    for i in range(21):
+        f.write("{het} {het} {eta} {eta} {tau}\n".format(het = i, eta = 0.05, tau = 1))
 '''
 with open('train_spirit.txt', 'w+') as f:
     for i in np.linspace(0, 1, 11):

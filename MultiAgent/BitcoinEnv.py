@@ -490,14 +490,14 @@ class BitcoinEnv(MultiAgentEnv):
         self._rewards = rewards
         tree = self.convert_tree(self._hidden_tree)
         if self._print_trees:
-            print('Rewards', rewards)
+            print('Rewards', rew)
             print('Block receiver', event)
             print("Obs", obs)
             
             print('\n')
             print(drawTree2(False)(False)(tree))
             print('\n')
-        self._debug_string += 'Rewards {0}\n'.format(rewards)
+        self._debug_string += 'Rewards {0}\n'.format(rew)
         self._debug_string += 'Block receiver {0}\n'.format(event)
         self._debug_string += 'Obs {0}\n'.format(obs)
         self._debug_string += '\n'

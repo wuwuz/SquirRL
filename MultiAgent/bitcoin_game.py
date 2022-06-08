@@ -202,6 +202,8 @@ class Honest(Policy):
 
     def set_weights(self, weights):
         pass
+
+# runs a fixed strategy
 def run_saved(args):
     if args.OSM[0] == 1 and args.OSM[1] == 0:
         setting = "RLvsOSM"
@@ -249,15 +251,15 @@ def run_saved(args):
         spy_dim += get_preprocessor(space)(space).size
     
     spy_state_space_wrapped = spaces.Dict(
-        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
-            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,), dtype=np.int64),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n), dtype=np.float64),
             "bitcoin": spaces.Box(0,np.inf,shape=(spy_dim,))
         } 
     )
     blind_state_space_wrapped = spaces.Dict(
-        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
-            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
-            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,))
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,), dtype=np.int64),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n), dtype=np.float64),
+            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,), dtype=np.float64)
         } 
     )
     preps = [None for i in range(len(args.alphas))]
@@ -474,7 +476,7 @@ def run_RL(args):
     blind_state_space = constants.make_blind_space(len(args.alphas), args.blocks)
     policies = dict()
     osm_space = spaces.Box(low=np.zeros(4), 
-                high=np.array([args.blocks + 4, args.blocks + 4, args.blocks + 4, 3.]))
+                high=np.array([args.blocks + 4, args.blocks + 4, args.blocks + 4, 3.]), dtype=np.float64)
     blind_dim = 0
     for space in blind_state_space:
         blind_dim +=  get_preprocessor(space)(space).size 
@@ -484,15 +486,15 @@ def run_RL(args):
         spy_dim += get_preprocessor(space)(space).size
     
     spy_state_space_wrapped = spaces.Dict(
-        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
-            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,), dtype=np.int64),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n), dtype=np.float64),
             "bitcoin": spaces.Box(0,np.inf,shape=(spy_dim,))
         } 
     )
     blind_state_space_wrapped = spaces.Dict(
-        {   "action_mask": spaces.Box(0,1,shape = (action_n,)),
-            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n)),
-            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,))
+        {   "action_mask": spaces.Box(0,1,shape = (action_n,), dtype=np.int64),
+            "avail_actions": spaces.Box(-10, 10, shape=(action_n, action_n), dtype=np.float64),
+            "bitcoin": spaces.Box(0,np.inf,shape=(blind_dim,), dtype=np.float64)
         } 
     )
     for i in range(len(args.alphas)):
@@ -517,7 +519,6 @@ def run_RL(args):
             policies[str(i)] = (None, blind_state_space_wrapped, spaces.Discrete(action_n), {
                             "model": {
                                 "use_lstm":args.use_lstm,
-                                #"max_seq_len": 15*(len(args.alphas) + 1),
                                 "custom_model": "pa_model",
                                 "custom_options": {
                                 "parties": len(args.alphas),
@@ -608,12 +609,9 @@ def run_RL(args):
                 args.trainer,
                 name='eval_v3',
                 stop={"iterations_since_restore": 300},
-                #restore=args.save_path,
                 checkpoint_score_attr='episode_reward_mean',
                 config=config,
                 local_dir = "/afs/ece/usr/charlieh/ray_results",
-                #checkpoint_freq=20,
-                #keep_checkpoints_num=1,
                 checkpoint_at_end=True
             ) 
         else:
@@ -633,7 +631,7 @@ def run_RL(args):
         if hasattr(args, 'cont_path'):
             tune.run(
                 args.trainer,
-                name='RL4_v3',
+                name='RL4_v4',
                 stop={"episodes_total": args.episodes},
                 restore=args.cont_path,
                 checkpoint_score_attr='episode_reward_mean',
@@ -669,13 +667,16 @@ def main():
     CLI.add_argument('--episodes', type = int, default = 2*2*532500)
     #CLI.add_argument('--episodes', type = int, default = 20000)
     CLI.add_argument('--ep_length', type = int, default = 100)
-    # give particular players the ability to see the hidden states of other players
+    # give particular players the ability to see the hidden states of other
+    # players; 1 means we have spy mining, 0 means no spy mining for a player
     CLI.add_argument('--spy', nargs='*', type=int, default = [0, 0])
-    # do the OSM experiment; currently only supported for RL vs OSM, can be expanded if need be
+    # number of OSM players
     CLI.add_argument('--OSM', type = int, default = 0)
-    CLI.add_argument('--workers', type = int, default = min(len(os.sched_getaffinity(0)) - 1, 15))
+    CLI.add_argument('--workers', type = int, default = min(len(os.sched_getaffinity(0)) - 1, 31))
+    # the number of strategic players (i.e. not honest)
     CLI.add_argument('--players', type = int, default = 0)
-    # how much to value the team (1 is fully support team, 0 is lone wolf.)
+    # how much to value the team (all non-honest miners)
+    # (1 is fully support team, 0 is lone wolf.)
     CLI.add_argument('--team_spirit', type = float,default = 0.)
     # print the blockchain graphs at each step to see what's going on
     CLI.add_argument('--debug', type = bool, default = False)
@@ -685,23 +686,6 @@ def main():
     CLI.add_argument('--extended', type=int, default = 0)
     CLI.add_argument('--honest', type=int, default = [0,1])
     args = CLI.parse_args()  
-    '''
-    args.alphas = [args.alphas[0]]*1
-    args.gammas = [args.gammas[0]]*1
-    args.spy = [args.spy[0]]*1
-    args.OSM = [1]
-    run_OSM_vs_OSM(args) 
-    '''
-    '''
-    args.alphas = [.3,.3,.3,.1]
-    args.gammas = [0,0,0,0]
-    args.honest = [1,1,1,1]
-    args.fiftyone = [1,1,1,0]
-    args.OSM = [0,0,0,0]
-    args.spy = [1,1,1,0]
-    args.extended = 1
-    run_saved(args)
-    '''
     
     if args.players > 0:
         alpha = args.alphas[0]
